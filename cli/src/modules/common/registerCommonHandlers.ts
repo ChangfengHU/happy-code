@@ -4,10 +4,11 @@ import { promisify } from 'util';
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { createHash } from 'crypto';
 import { join } from 'path';
+import { homedir } from 'os';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
-import { validatePath } from './pathSecurity';
+import { validatePath, validatePathWithinRoots } from './pathSecurity';
 
 const execAsync = promisify(exec);
 
@@ -135,6 +136,7 @@ export interface SpawnSessionOptions {
         // Note: TMUX_TMPDIR is used by tmux to store socket files when default /tmp is not suitable
         // Common use case: When /tmp has limited space or different permissions
     };
+    model?: string;
 }
 
 export type SpawnSessionResult =
@@ -321,8 +323,9 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
     rpcHandlerManager.registerHandler<ListDirectoryRequest, ListDirectoryResponse>('listDirectory', async (data) => {
         logger.debug('List directory request:', data.path);
 
-        // Validate path is within working directory
-        const validation = validatePath(data.path, workingDirectory);
+        const allowedRoots = [workingDirectory, homedir()];
+        // Allow directory browsing within working directory or user's home directory
+        const validation = validatePathWithinRoots(data.path, allowedRoots);
         if (!validation.valid) {
             return { success: false, error: validation.error };
         }

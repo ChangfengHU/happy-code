@@ -216,9 +216,9 @@ export default function PathPickerScreen() {
                                         maxHeight={76}
                                         paddingTop={8}
                                         paddingBottom={8}
-                                        // onSubmitEditing={handleSelectPath}
-                                        // blurOnSubmit={true}
-                                        // returnKeyType="done"
+                                    // onSubmitEditing={handleSelectPath}
+                                    // blurOnSubmit={true}
+                                    // returnKeyType="done"
                                     />
                                 </View>
                             </View>

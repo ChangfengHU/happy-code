@@ -551,6 +551,20 @@ export const ca: TranslationStructure = {
         fileEmpty: 'El fitxer està buit',
         noChanges: 'No hi ha canvis a mostrar',
     },
+    directoryPicker: {
+        title: 'Selecciona carpeta',
+        currentFolder: 'Carpeta actual',
+        currentFolderHint: 'Tria una subcarpeta o fes servir la carpeta actual',
+        useThisFolder: 'Utilitza aquesta carpeta',
+        folders: 'Carpetes',
+        parentFolder: 'Carpeta superior',
+        loading: "S'estan carregant les carpetes...",
+        empty: 'No hi ha subcarpetes',
+        loadFailed: "No s'han pogut carregar les carpetes",
+        refresh: 'Actualitza',
+        pathUnavailable: 'La ruta de la sessió no està disponible',
+        sessionUnavailable: 'La sessió no està disponible',
+    },
 
     settingsVoice: {
         // Voice settings screen

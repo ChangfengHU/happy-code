@@ -11,7 +11,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
+import { machineSpawnNewSession, sessionAbort } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -30,8 +30,15 @@ import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 
-export const SessionView = React.memo((props: { id: string }) => {
+const resolveAgentType = (flavor?: string | null): 'claude' | 'codex' | 'gemini' => {
+    if (flavor === 'codex' || flavor === 'gpt' || flavor === 'openai') return 'codex';
+    if (flavor === 'gemini') return 'gemini';
+    return 'claude';
+};
+
+export const SessionView = React.memo((props: { id: string; switchPath?: string }) => {
     const sessionId = props.id;
+    const switchPath = props.switchPath;
     const router = useRouter();
     const session = useSession(sessionId);
     const isDataReady = useIsDataReady();
@@ -141,7 +148,7 @@ export const SessionView = React.memo((props: { id: string }) => {
                     </View>
                 ) : (
                     // Normal session view
-                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} />
+                    <SessionViewLoaded key={sessionId} sessionId={sessionId} session={session} switchPath={switchPath} />
                 )}
             </View>
         </>
@@ -149,16 +156,18 @@ export const SessionView = React.memo((props: { id: string }) => {
 });
 
 
-function SessionViewLoaded({ sessionId, session }: { sessionId: string, session: Session }) {
+function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: string, session: Session, switchPath?: string }) {
     const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const [message, setMessage] = React.useState('');
+    const [isSwitchingPath, setIsSwitchingPath] = React.useState(false);
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
+    const recentMachinePaths = useSetting('recentMachinePaths');
 
     // Check if CLI version is outdated and not already acknowledged
     const cliVersion = session.metadata?.version;
@@ -175,6 +184,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
+    const lastHandledSwitchPathRef = React.useRef<string | null>(null);
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -200,6 +210,98 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const updateModelMode = React.useCallback((mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => {
         storage.getState().updateSessionModelMode(sessionId, mode);
     }, [sessionId]);
+
+    const handleSwitchPath = React.useCallback(async (pathToUse: string) => {
+        const machineId = session.metadata?.machineId;
+        if (!machineId) {
+            Modal.alert(t('common.error'), t('newSession.noMachineSelected'));
+            return;
+        }
+
+        const trimmedPath = pathToUse.trim();
+        if (!trimmedPath) {
+            return;
+        }
+
+        if (session.metadata?.path === trimmedPath) {
+            return;
+        }
+
+        setIsSwitchingPath(true);
+
+        const spawnSession = async (approvedNewDirectoryCreation?: boolean): Promise<string | null> => {
+            const result = await machineSpawnNewSession({
+                machineId,
+                directory: trimmedPath,
+                approvedNewDirectoryCreation,
+                agent: resolveAgentType(session.metadata?.flavor)
+            });
+
+            if (result.type === 'success') {
+                return result.sessionId;
+            }
+
+            if (result.type === 'requestToApproveDirectoryCreation') {
+                const confirmed = await Modal.confirm(
+                    t('newSession.directoryDoesNotExist'),
+                    t('newSession.createDirectoryConfirm', { directory: result.directory })
+                );
+                if (confirmed) {
+                    return spawnSession(true);
+                }
+                return null;
+            }
+
+            if (result.type === 'error') {
+                Modal.alert(t('common.error'), result.errorMessage);
+                return null;
+            }
+
+            return null;
+        };
+
+        try {
+            const newSessionId = await spawnSession(false);
+            if (newSessionId) {
+                const updatedPaths = [
+                    { machineId, path: trimmedPath },
+                    ...recentMachinePaths.filter(entry => entry.machineId !== machineId)
+                ].slice(0, 10);
+                storage.getState().applyLocalSettings({ recentMachinePaths: updatedPaths });
+
+                if (session.permissionMode) {
+                    storage.getState().updateSessionPermissionMode(newSessionId, session.permissionMode);
+                }
+                if (session.modelMode) {
+                    storage.getState().updateSessionModelMode(newSessionId, session.modelMode);
+                }
+
+                router.replace(`/session/${newSessionId}`);
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : t('newSession.failedToStart');
+            Modal.alert(t('common.error'), message);
+        } finally {
+            setIsSwitchingPath(false);
+        }
+    }, [recentMachinePaths, router, session.metadata?.flavor, session.metadata?.machineId, session.metadata?.path, session.modelMode, session.permissionMode]);
+
+    React.useEffect(() => {
+        const trimmedPath = typeof switchPath === 'string' ? switchPath.trim() : '';
+        if (!trimmedPath) {
+            return;
+        }
+        if (lastHandledSwitchPathRef.current === trimmedPath) {
+            return;
+        }
+        lastHandledSwitchPathRef.current = trimmedPath;
+
+        handleSwitchPath(trimmedPath).finally(() => {
+            if (typeof (router as any).setParams === 'function') {
+                (router as any).setParams({ path: undefined });
+            }
+        });
+    }, [handleSwitchPath, router, switchPath]);
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
@@ -272,6 +374,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         </>
     ) : null;
 
+    const canSwitchPath = !!session.metadata?.machineId && !!session.metadata?.path && !isSwitchingPath;
+    const displayPath = session.metadata?.path
+        ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir)
+        : undefined;
+
     const input = (
         <AgentInput
             placeholder={t('session.inputPlaceholder')}
@@ -302,6 +409,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onAbort={() => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
+            currentPath={canSwitchPath ? displayPath : undefined}
+            onPathClick={canSwitchPath ? () => {
+                router.push(`/session/${sessionId}/pick/path`);
+            } : undefined}
             // Autocomplete configuration
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}

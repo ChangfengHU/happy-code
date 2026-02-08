@@ -566,6 +566,20 @@ export const en: TranslationStructure = {
         fileEmpty: 'File is empty',
         noChanges: 'No changes to display',
     },
+    directoryPicker: {
+        title: 'Select Folder',
+        currentFolder: 'Current Folder',
+        currentFolderHint: 'Choose a subfolder or use the current folder',
+        useThisFolder: 'Use this folder',
+        folders: 'Folders',
+        parentFolder: 'Parent folder',
+        loading: 'Loading folders...',
+        empty: 'No subfolders found',
+        loadFailed: 'Failed to load folders',
+        refresh: 'Refresh',
+        pathUnavailable: 'Session path not available',
+        sessionUnavailable: 'Session not available',
+    },
 
     settingsVoice: {
         // Voice settings screen

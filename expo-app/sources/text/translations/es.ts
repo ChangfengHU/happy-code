@@ -551,6 +551,20 @@ export const es: TranslationStructure = {
         fileEmpty: 'El archivo está vacío',
         noChanges: 'No hay cambios que mostrar',
     },
+    directoryPicker: {
+        title: 'Seleccionar carpeta',
+        currentFolder: 'Carpeta actual',
+        currentFolderHint: 'Elige una subcarpeta o usa la carpeta actual',
+        useThisFolder: 'Usar esta carpeta',
+        folders: 'Carpetas',
+        parentFolder: 'Carpeta superior',
+        loading: 'Cargando carpetas...',
+        empty: 'No hay subcarpetas',
+        loadFailed: 'No se pudieron cargar las carpetas',
+        refresh: 'Actualizar',
+        pathUnavailable: 'La ruta de la sesión no está disponible',
+        sessionUnavailable: 'La sesión no está disponible',
+    },
 
     settingsVoice: {
         // Voice settings screen

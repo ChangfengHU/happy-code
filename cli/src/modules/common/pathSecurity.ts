@@ -27,3 +27,25 @@ export function validatePath(targetPath: string, workingDirectory: string): Path
 
     return { valid: true };
 }
+
+/**
+ * Validates that a path is within at least one allowed root directory.
+ * @param targetPath - The path to validate (can be relative or absolute)
+ * @param allowedRoots - Allowed root directories (must be absolute or resolvable)
+ * @returns Validation result
+ */
+export function validatePathWithinRoots(targetPath: string, allowedRoots: string[]): PathValidationResult {
+    for (const root of allowedRoots) {
+        const resolvedRoot = resolve(root);
+        const resolvedTarget = resolve(root, targetPath);
+
+        if (resolvedTarget === resolvedRoot || resolvedTarget.startsWith(resolvedRoot + '/')) {
+            return { valid: true };
+        }
+    }
+
+    return {
+        valid: false,
+        error: `Access denied: Path '${targetPath}' is outside the allowed directories`
+    };
+}

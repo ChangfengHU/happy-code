@@ -153,7 +153,7 @@ export const zhHans: TranslationStructure = {
         themeDescription: '选择您喜欢的配色方案',
         themeOptions: {
             adaptive: '自适应',
-            light: '浅色', 
+            light: '浅色',
             dark: '深色',
         },
         themeDescriptions: {
@@ -247,7 +247,7 @@ export const zhHans: TranslationStructure = {
             `${seconds} 秒后重试`,
         errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
             `${message} (错误 ${code})`,
-        disconnectServiceFailed: ({ service }: { service: string }) => 
+        disconnectServiceFailed: ({ service }: { service: string }) =>
             `断开连接 ${service} 失败`,
         connectServiceFailed: ({ service }: { service: string }) =>
             `连接 ${service} 失败。请重试。`,
@@ -377,7 +377,7 @@ export const zhHans: TranslationStructure = {
         deleteSessionWarning: '此操作无法撤销。与此会话相关的所有消息和数据将被永久删除。',
         failedToDeleteSession: '删除会话失败',
         sessionDeleted: '会话删除成功',
-        
+
     },
 
     components: {
@@ -449,6 +449,7 @@ export const zhHans: TranslationStructure = {
             folderLabel: '文件夹',
         },
         noMachinesAvailable: '无设备',
+        refreshMachines: '刷新',
     },
 
     machineLauncher: {
@@ -553,6 +554,20 @@ export const zhHans: TranslationStructure = {
         fileEmpty: '文件为空',
         noChanges: '没有要显示的更改',
     },
+    directoryPicker: {
+        title: '选择文件夹',
+        currentFolder: '当前文件夹',
+        currentFolderHint: '选择子文件夹或使用当前文件夹',
+        useThisFolder: '使用此文件夹',
+        folders: '文件夹',
+        parentFolder: '上级文件夹',
+        loading: '正在加载文件夹...',
+        empty: '没有子文件夹',
+        loadFailed: '加载文件夹失败',
+        refresh: '刷新',
+        pathUnavailable: '会话路径不可用',
+        sessionUnavailable: '会话不可用',
+    },
 
     settingsVoice: {
         // Voice settings screen
@@ -651,6 +666,8 @@ export const zhHans: TranslationStructure = {
         encryption: '加密',
         endToEndEncrypted: '端到端加密',
         acceptConnection: '接受连接',
+        createAccountAndConnect: '创建账户并连接',
+        creatingAccount: '创建账户中...',
         connecting: '连接中...',
         reject: '拒绝',
         security: '安全',
@@ -673,9 +690,9 @@ export const zhHans: TranslationStructure = {
         developerModeDisabled: '开发者模式已禁用',
         disconnectGithub: '断开 GitHub 连接',
         disconnectGithubConfirm: '您确定要断开 GitHub 账户连接吗？',
-        disconnectService: ({ service }: { service: string }) => 
+        disconnectService: ({ service }: { service: string }) =>
             `断开 ${service} 连接`,
-        disconnectServiceConfirm: ({ service }: { service: string }) => 
+        disconnectServiceConfirm: ({ service }: { service: string }) =>
             `您确定要断开 ${service} 与您账户的连接吗？`,
         disconnect: '断开连接',
         failedToConnectTerminal: '连接终端失败',
@@ -687,7 +704,7 @@ export const zhHans: TranslationStructure = {
     navigation: {
         // Navigation titles and screen headers
         connectTerminal: '连接终端',
-        linkNewDevice: '链接新设备', 
+        linkNewDevice: '链接新设备',
         restoreWithSecretKey: '通过密钥恢复',
         whatsNew: "更新日志",
         friends: '好友',

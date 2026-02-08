@@ -561,6 +561,20 @@ export const ru: TranslationStructure = {
         fileEmpty: 'Файл пустой',
         noChanges: 'Нет изменений для отображения',
     },
+    directoryPicker: {
+        title: 'Выбор папки',
+        currentFolder: 'Текущая папка',
+        currentFolderHint: 'Выберите подпапку или используйте текущую папку',
+        useThisFolder: 'Использовать эту папку',
+        folders: 'Папки',
+        parentFolder: 'Родительская папка',
+        loading: 'Загрузка папок...',
+        empty: 'Подпапок нет',
+        loadFailed: 'Не удалось загрузить папки',
+        refresh: 'Обновить',
+        pathUnavailable: 'Путь сеанса недоступен',
+        sessionUnavailable: 'Сеанс недоступен',
+    },
 
     settingsVoice: {
         // Voice settings screen

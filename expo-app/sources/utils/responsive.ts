@@ -40,7 +40,7 @@ export function getDeviceType(): 'phone' | 'tablet' {
 // Hook to get device type (reactive to dimension changes)
 export function useDeviceType(): 'phone' | 'tablet' {
     const { width, height } = useWindowDimensions();
-    
+
     return useMemo(() => {
         const dimensions = calculateDeviceDimensions({
             widthPoints: width,
@@ -73,7 +73,7 @@ export function useIsLandscape(): boolean {
 export function useHeaderHeight(): number {
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
-    
+
     return useMemo(() => {
         return calculateHeaderHeight({
             platform: Platform.OS,

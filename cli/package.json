@@ -1,16 +1,16 @@
 {
-  "name": "happy-coder",
+  "name": "happy-coder-pro",
   "version": "0.14.0-0",
-  "description": "Mobile and Web client for Claude Code and Codex",
-  "author": "Kirill Dubovitskiy",
+  "description": "Happy Coder Pro - 增强版移动端/Web 客户端，支持 Claude Code、Codex 和 Gemini",
+  "author": "ChangfengHU",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/slopus/happy-cli",
-  "bugs": "https://github.com/slopus/happy-cli/issues",
-  "repository": "slopus/happy-cli",
+  "homepage": "https://github.com/ChangfengHU/happy-code",
+  "bugs": "https://github.com/ChangfengHU/happy-code/issues",
+  "repository": "ChangfengHU/happy-code",
   "bin": {
-    "happy": "./bin/happy.mjs",
-    "happy-mcp": "./bin/happy-mcp.mjs"
+    "happy-pro": "./bin/happy.mjs",
+    "happy-pro-mcp": "./bin/happy-mcp.mjs"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",

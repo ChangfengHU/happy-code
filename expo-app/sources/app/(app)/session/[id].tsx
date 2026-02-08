@@ -5,6 +5,8 @@ import { SessionView } from '@/-session/SessionView';
 
 export default React.memo(() => {
     const route = useRoute();
-    const sessionId = (route.params! as any).id as string;
-    return (<SessionView id={sessionId} />);
+    const params = (route.params || {}) as { id: string; path?: string };
+    const sessionId = params.id;
+    const switchPath = typeof params.path === 'string' ? params.path : undefined;
+    return (<SessionView id={sessionId} switchPath={switchPath} />);
 });

@@ -583,6 +583,20 @@ export const ja: TranslationStructure = {
         fileEmpty: 'ファイルは空です',
         noChanges: '表示する変更はありません',
     },
+    directoryPicker: {
+        title: 'フォルダを選択',
+        currentFolder: '現在のフォルダ',
+        currentFolderHint: 'サブフォルダを選ぶか、現在のフォルダを使用します',
+        useThisFolder: 'このフォルダを使用',
+        folders: 'フォルダ',
+        parentFolder: '親フォルダ',
+        loading: 'フォルダを読み込み中...',
+        empty: 'サブフォルダがありません',
+        loadFailed: 'フォルダの読み込みに失敗しました',
+        refresh: '更新',
+        pathUnavailable: 'セッションのパスが利用できません',
+        sessionUnavailable: 'セッションが利用できません',
+    },
 
     settingsVoice: {
         // Voice settings screen

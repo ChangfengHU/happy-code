@@ -10,6 +10,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { ItemList } from '@/components/ItemList';
 import { SearchableListSelector } from '@/components/SearchableListSelector';
+import { useBatchCLIDetection } from '@/hooks/useCLIDetection';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -38,6 +39,9 @@ export default function MachinePickerScreen() {
     const params = useLocalSearchParams<{ selectedId?: string }>();
     const machines = useAllMachines();
     const sessions = useSessions();
+
+    // Batch detect capabilities for all machines
+    const machineCapabilities = useBatchCLIDetection(machines);
 
     const selectedMachine = machines.find(m => m.id === params.selectedId) || null;
 
@@ -135,11 +139,39 @@ export default function MachinePickerScreen() {
                         ),
                         getItemStatus: (machine) => {
                             const offline = !isMachineOnline(machine);
+
+                            // Basic status
+                            if (offline) {
+                                return {
+                                    text: 'offline',
+                                    color: theme.colors.status.disconnected,
+                                    dotColor: theme.colors.status.disconnected,
+                                    isPulsing: false,
+                                };
+                            }
+
+                            // Online status with capabilities
+                            const capabilities = machineCapabilities[machine.id];
+                            let statusText = 'online';
+
+                            if (capabilities && capabilities.timestamp > 0) {
+                                const caps: string[] = [];
+                                if (capabilities.claude) caps.push('claude');
+                                if (capabilities.codex) caps.push('codex');
+                                if (capabilities.gemini) caps.push('gemini');
+
+                                if (caps.length > 0) {
+                                    statusText += ` ✓ ${caps.join(' ✓ ')}`;
+                                }
+                            } else if (capabilities?.isDetecting) {
+                                statusText += ' (checking...)';
+                            }
+
                             return {
-                                text: offline ? 'offline' : 'online',
-                                color: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
-                                dotColor: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
-                                isPulsing: !offline,
+                                text: statusText,
+                                color: theme.colors.status.connected,
+                                dotColor: theme.colors.status.connected,
+                                isPulsing: true,
                             };
                         },
                         formatForDisplay: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,

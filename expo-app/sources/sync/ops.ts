@@ -150,6 +150,7 @@ export interface SpawnSessionOptions {
     // - API_TIMEOUT_MS, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
     // - Custom variables (DEEPSEEK_*, Z_AI_*, etc.)
     environmentVariables?: Record<string, string>;
+    model?: string;
 }
 
 // Exported session operation functions
@@ -159,7 +160,7 @@ export interface SpawnSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, model } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -169,10 +170,11 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             token?: string,
             agent?: 'codex' | 'claude' | 'gemini',
             environmentVariables?: Record<string, string>;
+            model?: string;
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables, model }
         );
         return result;
     } catch (error) {
@@ -501,7 +503,7 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
         const response = await apiSocket.request(`/v1/sessions/${sessionId}`, {
             method: 'DELETE'
         });
-        
+
         if (response.ok) {
             const result = await response.json();
             return { success: true };

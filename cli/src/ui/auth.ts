@@ -242,18 +242,22 @@ export function decryptWithEphemeralKey(encryptedBundle: Uint8Array, recipientSe
  * Ensure authentication and machine setup
  * This replaces the onboarding flow and ensures everything is ready
  */
-export async function authAndSetupMachineIfNeeded(): Promise<{
+export async function authAndSetupMachineIfNeeded(options: { force?: boolean } = {}): Promise<{
     credentials: Credentials;
     machineId: string;
 }> {
     logger.debug('[AUTH] Starting auth and machine setup...');
 
     // Step 1: Handle authentication
-    let credentials = await readCredentials();
+    let credentials = options.force ? null : await readCredentials();
     let newAuth = false;
 
     if (!credentials) {
-        logger.debug('[AUTH] No credentials found, starting authentication flow...');
+        if (options.force) {
+            logger.debug('[AUTH] Forced re-authentication requested');
+        } else {
+            logger.debug('[AUTH] No credentials found, starting authentication flow...');
+        }
         const authResult = await doAuth();
         if (!authResult) {
             throw new Error('Authentication failed or was cancelled');

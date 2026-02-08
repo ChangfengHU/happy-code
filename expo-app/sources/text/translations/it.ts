@@ -580,6 +580,20 @@ export const it: TranslationStructure = {
         fileEmpty: 'File vuoto',
         noChanges: 'Nessuna modifica da mostrare',
     },
+    directoryPicker: {
+        title: 'Seleziona cartella',
+        currentFolder: 'Cartella corrente',
+        currentFolderHint: 'Scegli una sottocartella o usa la cartella corrente',
+        useThisFolder: 'Usa questa cartella',
+        folders: 'Cartelle',
+        parentFolder: 'Cartella superiore',
+        loading: 'Caricamento cartelle...',
+        empty: 'Nessuna sottocartella',
+        loadFailed: 'Impossibile caricare le cartelle',
+        refresh: 'Aggiorna',
+        pathUnavailable: 'Percorso della sessione non disponibile',
+        sessionUnavailable: 'Sessione non disponibile',
+    },
 
     settingsVoice: {
         // Voice settings screen

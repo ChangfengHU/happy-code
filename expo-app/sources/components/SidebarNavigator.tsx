@@ -32,7 +32,7 @@ export const SidebarNavigator = React.memo(() => {
                 },
             };
         }
-        
+
         // When drawer is permanent
         return {
             lazy: false,

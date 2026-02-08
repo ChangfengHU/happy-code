@@ -290,6 +290,18 @@ export async function startDaemon(): Promise<void> {
           }
         }
 
+        // Handle model selection
+        if (options.model) {
+          if (options.agent === 'claude' || !options.agent) {
+            authEnv.ANTHROPIC_MODEL = options.model;
+          }
+          // Note: Codex and Gemini handle models via session metadata/messages or their own config,
+          // but we can pass generic env vars just in case they are used.
+          if (options.agent === 'codex') {
+            authEnv.CODEX_MODEL = options.model;
+          }
+        }
+
         // Layer 2: Profile environment variables
         // Priority: GUI-provided profile > CLI local active profile > none
         let profileEnv: Record<string, string> = {};

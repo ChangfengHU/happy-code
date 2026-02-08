@@ -73,6 +73,7 @@ interface AgentInputProps {
     minHeight?: number;
     profileId?: string | null;
     onProfileClick?: () => void;
+    onRefreshMachines?: () => void;  // 用于手动刷新机器列表（当无设备时显示）
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -624,9 +625,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         // Gemini model selector
                                         (['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const).map((model) => {
                                             const modelConfig = {
-                                                'gemini-2.5-pro': { label: 'Gemini 2.5 Pro', description: 'Most capable' },
-                                                'gemini-2.5-flash': { label: 'Gemini 2.5 Flash', description: 'Fast & efficient' },
-                                                'gemini-2.5-flash-lite': { label: 'Gemini 2.5 Flash Lite', description: 'Fastest' },
+                                                'gemini-2.5-pro': { label: 'Gemini 2.5 Pro', description: '性能最强' },
+                                                'gemini-2.5-flash': { label: 'Gemini 2.5 Flash', description: '快速高效' },
+                                                'gemini-2.5-flash-lite': { label: 'Gemini 2.5 Flash Lite', description: '极速响应' },
                                             };
                                             const config = modelConfig[model];
                                             const isSelected = props.modelMode === model;
@@ -684,17 +685,140 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 </Pressable>
                                             );
                                         })
+                                    ) : isCodex ? (
+                                        // Codex model selector
+                                        (['gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'] as const).map((model) => {
+                                            const modelConfig = {
+                                                'gpt-5.2-codex': { label: 'gpt-5.2-codex (current)', description: 'Latest frontier agentic coding model' },
+                                                'gpt-5.2': { label: 'gpt-5.2', description: 'Latest frontier model with improvements' },
+                                                'gpt-5.1-codex-max': { label: 'gpt-5.1-codex-max', description: 'Flagship for deep and fast reasoning' },
+                                                'gpt-5.1-codex-mini': { label: 'gpt-5.1-codex-mini', description: 'Cheaper, faster, less capable' },
+                                            };
+                                            const config = modelConfig[model];
+                                            // Handle 'default' mode mapping to the first option
+                                            const isSelected = props.modelMode === model || (props.modelMode === 'default' && model === 'gpt-5.2-codex');
+
+                                            return (
+                                                <Pressable
+                                                    key={model}
+                                                    onPress={() => {
+                                                        hapticsLight();
+                                                        // If selecting the default-equivalent model, we can set 'default' or the specific name.
+                                                        // Setting specific name is safer for explicit CLI usage.
+                                                        props.onModelModeChange?.(model);
+                                                    }}
+                                                    style={({ pressed }) => ({
+                                                        flexDirection: 'row',
+                                                        alignItems: 'center',
+                                                        paddingHorizontal: 16,
+                                                        paddingVertical: 8,
+                                                        backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                    })}
+                                                >
+                                                    <View style={{
+                                                        width: 16,
+                                                        height: 16,
+                                                        borderRadius: 8,
+                                                        borderWidth: 2,
+                                                        borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        marginRight: 12
+                                                    }}>
+                                                        {isSelected && (
+                                                            <View style={{
+                                                                width: 6,
+                                                                height: 6,
+                                                                borderRadius: 3,
+                                                                backgroundColor: theme.colors.radio.dot
+                                                            }} />
+                                                        )}
+                                                    </View>
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={{
+                                                            fontSize: 14,
+                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            {config.label}
+                                                        </Text>
+                                                        <Text style={{
+                                                            fontSize: 11,
+                                                            color: theme.colors.textSecondary,
+                                                            ...Typography.default()
+                                                        }} numberOfLines={1}>
+                                                            {config.description}
+                                                        </Text>
+                                                    </View>
+                                                </Pressable>
+                                            );
+                                        })
                                     ) : (
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.textSecondary,
-                                            paddingHorizontal: 16,
-                                            paddingVertical: 8,
-                                            ...Typography.default()
-                                        }}>
-                                            {t('agentInput.model.configureInCli')}
-                                        </Text>
+                                        // Claude model selector (Default)
+                                        (['default', 'claude-3-opus-20240229', 'claude-3-5-haiku-20241022'] as const).map((model) => {
+                                            const modelConfig = {
+                                                'default': { label: 'Default (recommended)', description: 'Use the default model (currently glm-4.7)' },
+                                                'claude-3-opus-20240229': { label: 'Opus', description: 'Opus 4.5 • Most capable for complex work' },
+                                                'claude-3-5-haiku-20241022': { label: 'Haiku', description: 'Haiku 4.5 • Fastest for quick answers' },
+                                            };
+                                            const config = modelConfig[model];
+                                            const isSelected = props.modelMode === model;
+
+                                            return (
+                                                <Pressable
+                                                    key={model}
+                                                    onPress={() => {
+                                                        hapticsLight();
+                                                        props.onModelModeChange?.(model);
+                                                    }}
+                                                    style={({ pressed }) => ({
+                                                        flexDirection: 'row',
+                                                        alignItems: 'center',
+                                                        paddingHorizontal: 16,
+                                                        paddingVertical: 8,
+                                                        backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                    })}
+                                                >
+                                                    <View style={{
+                                                        width: 16,
+                                                        height: 16,
+                                                        borderRadius: 8,
+                                                        borderWidth: 2,
+                                                        borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        marginRight: 12
+                                                    }}>
+                                                        {isSelected && (
+                                                            <View style={{
+                                                                width: 6,
+                                                                height: 6,
+                                                                borderRadius: 3,
+                                                                backgroundColor: theme.colors.radio.dot
+                                                            }} />
+                                                        )}
+                                                    </View>
+                                                    <View>
+                                                        <Text style={{
+                                                            fontSize: 14,
+                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            {config.label}
+                                                        </Text>
+                                                        <Text style={{
+                                                            fontSize: 11,
+                                                            color: theme.colors.textSecondary,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            {config.description}
+                                                        </Text>
+                                                    </View>
+                                                </Pressable>
+                                            );
+                                        })
                                     )}
+                                    {/* Fallback/Legacy message removed as we now support all agents */}
                                 </View>
                             </FloatingOverlay>
                         </View>
@@ -813,6 +937,37 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             alignItems: 'flex-end',
                             minWidth: 150, // Fixed minimum width to prevent layout shift
                         }}>
+                            {/* Model Mode Display */}
+                            {props.modelMode && (
+                                <Text style={{
+                                    fontSize: 11,
+                                    color: theme.colors.textSecondary,
+                                    marginBottom: 2,
+                                    ...Typography.default()
+                                }}>
+                                    {(() => {
+                                        const m = props.modelMode;
+                                        if (isGemini) {
+                                            if (m === 'gemini-2.5-pro') return 'Gemini 2.5 Pro';
+                                            if (m === 'gemini-2.5-flash') return 'Gemini 2.5 Flash';
+                                            if (m === 'gemini-2.5-flash-lite') return 'Gemini 2.5 Flash Lite';
+                                            if (m === 'default') return 'Gemini (Default)';
+                                        } else if (isCodex) {
+                                            if (m === 'gpt-5.2-codex') return 'gpt-5.2-codex';
+                                            if (m === 'gpt-5.2') return 'gpt-5.2';
+                                            if (m === 'gpt-5.1-codex-max') return 'gpt-5.1-codex-max';
+                                            if (m === 'gpt-5.1-codex-mini') return 'gpt-5.1-codex-mini';
+                                            if (m === 'default') return 'Codex (Default)';
+                                        } else {
+                                            if (m === 'claude-3-opus-20240229') return 'Opus';
+                                            if (m === 'claude-3-5-haiku-20241022') return 'Haiku';
+                                            if (m === 'default') return 'Claude (Default)';
+                                        }
+                                        return m;
+                                    })()}
+                                </Text>
+                            )}
+
                             {props.permissionMode && (
                                 <Text style={{
                                     fontSize: 11,
@@ -858,37 +1013,72 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     }}>
                         {/* Machine chip */}
                         {props.machineName !== undefined && props.onMachineClick && (
-                            <Pressable
-                                onPress={() => {
-                                    hapticsLight();
-                                    props.onMachineClick?.();
-                                }}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 6,
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                    gap: 6,
-                                })}
-                            >
-                                <Ionicons
-                                    name="desktop-outline"
-                                    size={14}
-                                    color={theme.colors.textSecondary}
-                                />
-                                <Text style={{
-                                    fontSize: 13,
-                                    color: theme.colors.text,
-                                    fontWeight: '600',
-                                    ...Typography.default('semiBold'),
-                                }}>
-                                    {props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName}
-                                </Text>
-                            </Pressable>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Pressable
+                                    onPress={() => {
+                                        hapticsLight();
+                                        props.onMachineClick?.();
+                                    }}
+                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                    style={(p) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 6,
+                                        height: 32,
+                                        opacity: p.pressed ? 0.7 : 1,
+                                        gap: 6,
+                                    })}
+                                >
+                                    <Ionicons
+                                        name="desktop-outline"
+                                        size={14}
+                                        color={theme.colors.textSecondary}
+                                    />
+                                    <Text style={{
+                                        fontSize: 13,
+                                        color: props.machineName === null ? theme.colors.textSecondary : theme.colors.text,
+                                        fontWeight: '600',
+                                        ...Typography.default('semiBold'),
+                                    }}>
+                                        {props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName}
+                                    </Text>
+                                </Pressable>
+                                {/* 刷新按钮 - 仅在无设备时显示 */}
+                                {props.machineName === null && props.onRefreshMachines && (
+                                    <Pressable
+                                        onPress={() => {
+                                            hapticsLight();
+                                            props.onRefreshMachines?.();
+                                        }}
+                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            paddingHorizontal: 8,
+                                            paddingVertical: 4,
+                                            borderRadius: 8,
+                                            backgroundColor: p.pressed ? theme.colors.surfacePressed : 'transparent',
+                                            opacity: p.pressed ? 0.7 : 1,
+                                            gap: 4,
+                                        })}
+                                    >
+                                        <Ionicons
+                                            name="refresh-outline"
+                                            size={14}
+                                            color={theme.colors.textLink}
+                                        />
+                                        <Text style={{
+                                            fontSize: 12,
+                                            color: theme.colors.textLink,
+                                            ...Typography.default(),
+                                        }}>
+                                            {t('agentInput.refreshMachines')}
+                                        </Text>
+                                    </Pressable>
+                                )}
+                            </View>
                         )}
 
                         {/* Path chip */}
@@ -952,106 +1142,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <View style={styles.actionButtonsLeft}>
 
-                                {/* Settings button */}
-                                {props.onPermissionModeChange && (
-                                    <Pressable
-                                        onPress={handleSettingsPress}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 8,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                        })}
-                                    >
-                                        <Octicons
-                                            name={'gear'}
-                                            size={16}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                    </Pressable>
-                                )}
-
-                                {/* Profile selector button - FIRST */}
-                                {props.profileId && props.onProfileClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onProfileClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-                                        <Ionicons
-                                            name="person-outline"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {currentProfile?.name || 'Select Profile'}
-                                        </Text>
-                                    </Pressable>
-                                )}
-
-                                {/* Agent selector button */}
-                                {props.agentType && props.onAgentClick && (
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onAgentClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-                                        <Octicons
-                                            name="cpu"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
-                                        </Text>
-                                    </Pressable>
-                                )}
-
-                                {/* Abort button */}
-                                {props.onAbort && (
-                                    <Shaker ref={shakerRef}>
+                                    {/* Settings button */}
+                                    {props.onPermissionModeChange && (
                                         <Pressable
+                                            onPress={handleSettingsPress}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                             style={(p) => ({
                                                 flexDirection: 'row',
                                                 alignItems: 'center',
@@ -1062,28 +1157,123 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 height: 32,
                                                 opacity: p.pressed ? 0.7 : 1,
                                             })}
-                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                            onPress={handleAbortPress}
-                                            disabled={isAborting}
                                         >
-                                            {isAborting ? (
-                                                <ActivityIndicator
-                                                    size="small"
-                                                    color={theme.colors.button.secondary.tint}
-                                                />
-                                            ) : (
-                                                <Octicons
-                                                    name={"stop"}
-                                                    size={16}
-                                                    color={theme.colors.button.secondary.tint}
-                                                />
-                                            )}
+                                            <Octicons
+                                                name={'gear'}
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
                                         </Pressable>
-                                    </Shaker>
-                                )}
+                                    )}
 
-                                {/* Git Status Badge */}
-                                <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                                    {/* Profile selector button - FIRST */}
+                                    {props.profileId && props.onProfileClick && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onProfileClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => ({
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                borderRadius: Platform.select({ default: 16, android: 20 }),
+                                                paddingHorizontal: 10,
+                                                paddingVertical: 6,
+                                                justifyContent: 'center',
+                                                height: 32,
+                                                opacity: p.pressed ? 0.7 : 1,
+                                                gap: 6,
+                                            })}
+                                        >
+                                            <Ionicons
+                                                name="person-outline"
+                                                size={14}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={{
+                                                fontSize: 13,
+                                                color: theme.colors.button.secondary.tint,
+                                                fontWeight: '600',
+                                                ...Typography.default('semiBold'),
+                                            }}>
+                                                {currentProfile?.name || 'Select Profile'}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+
+                                    {/* Agent selector button */}
+                                    {props.agentType && props.onAgentClick && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onAgentClick?.();
+                                            }}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => ({
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                borderRadius: Platform.select({ default: 16, android: 20 }),
+                                                paddingHorizontal: 10,
+                                                paddingVertical: 6,
+                                                justifyContent: 'center',
+                                                height: 32,
+                                                opacity: p.pressed ? 0.7 : 1,
+                                                gap: 6,
+                                            })}
+                                        >
+                                            <Octicons
+                                                name="cpu"
+                                                size={14}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                            <Text style={{
+                                                fontSize: 13,
+                                                color: theme.colors.button.secondary.tint,
+                                                fontWeight: '600',
+                                                ...Typography.default('semiBold'),
+                                            }}>
+                                                {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
+                                            </Text>
+                                        </Pressable>
+                                    )}
+
+                                    {/* Abort button */}
+                                    {props.onAbort && (
+                                        <Shaker ref={shakerRef}>
+                                            <Pressable
+                                                style={(p) => ({
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    borderRadius: Platform.select({ default: 16, android: 20 }),
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 6,
+                                                    justifyContent: 'center',
+                                                    height: 32,
+                                                    opacity: p.pressed ? 0.7 : 1,
+                                                })}
+                                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                                onPress={handleAbortPress}
+                                                disabled={isAborting}
+                                            >
+                                                {isAborting ? (
+                                                    <ActivityIndicator
+                                                        size="small"
+                                                        color={theme.colors.button.secondary.tint}
+                                                    />
+                                                ) : (
+                                                    <Octicons
+                                                        name={"stop"}
+                                                        size={16}
+                                                        color={theme.colors.button.secondary.tint}
+                                                    />
+                                                )}
+                                            </Pressable>
+                                        </Shaker>
+                                    )}
+
+                                    {/* Git Status Badge */}
+                                    <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                                 </View>
 
                                 {/* Send/Voice button - aligned with first row */}

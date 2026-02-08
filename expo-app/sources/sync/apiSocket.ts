@@ -116,16 +116,16 @@ class ApiSocket {
         if (!sessionEncryption) {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
-        
+
         const result = await this.socket!.emitWithAck('rpc-call', {
             method: `${sessionId}:${method}`,
             params: await sessionEncryption.encryptRaw(params)
         });
-        
+
         if (result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error('RPC call failed');
+        throw new Error(result.error || 'RPC call failed');
     }
 
     /**
@@ -145,7 +145,7 @@ class ApiSocket {
         if (result.ok) {
             return await machineEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error('RPC call failed');
+        throw new Error(result.error || 'RPC call failed');
     }
 
     send(event: string, data: any) {

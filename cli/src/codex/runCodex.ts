@@ -250,7 +250,7 @@ export async function runCodex(opts: {
                 storedSessionIdForResume = client.storeSessionForResume();
                 logger.debug('[Codex] Stored session for resume:', storedSessionIdForResume);
             }
-            
+
             abortController.abort();
             reasoningProcessor.abort();
             logger.debug('[Codex] Abort completed - session remains active');
@@ -282,7 +282,7 @@ export async function runCodex(opts: {
                     archivedBy: 'cli',
                     archiveReason: 'User terminated'
                 }));
-                
+
                 // Send session death message
                 session.sendSessionDeath();
                 await session.flush();
@@ -671,10 +671,10 @@ export async function runCodex(opts: {
                     if (message.mode.model) {
                         startConfig.model = message.mode.model;
                     }
-                    
+
                     // Check for resume file from multiple sources
                     let resumeFile: string | null = null;
-                    
+
                     // Priority 1: Explicit resume file from mode change
                     if (nextExperimentalResume) {
                         resumeFile = nextExperimentalResume;
@@ -691,12 +691,12 @@ export async function runCodex(opts: {
                         }
                         storedSessionIdForResume = null; // consume once
                     }
-                    
+
                     // Apply resume file if found
                     if (resumeFile) {
                         (startConfig.config as any).experimental_resume = resumeFile;
                     }
-                    
+
                     await client.startSession(
                         startConfig,
                         { signal: abortController.signal }
@@ -713,7 +713,7 @@ export async function runCodex(opts: {
             } catch (error) {
                 logger.warn('Error in codex session:', error);
                 const isAbortError = error instanceof Error && error.name === 'AbortError';
-                
+
                 if (isAbortError) {
                     messageBuffer.addMessage('Aborted by user', 'status');
                     session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });

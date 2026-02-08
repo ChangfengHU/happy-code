@@ -40,7 +40,7 @@ import { execFileSync } from 'node:child_process'
 
   // Check if first argument is a subcommand
   const subcommand = args[0]
-  
+
   // Log which subcommand was detected (for debugging)
   if (!args.includes('--version')) {
   }
@@ -85,19 +85,41 @@ import { execFileSync } from 'node:child_process'
     // Handle codex command
     try {
       const { runCodex } = await import('@/codex/runCodex');
-      
+
       // Parse startedBy argument
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let force = false;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--force') {
+          force = true;
         }
       }
-      
+
+      if (force) {
+        logger.debug('Stopping Happy background service for restart (force auth)...');
+        await stopDaemon();
+      }
+
       const {
         credentials
-      } = await authAndSetupMachineIfNeeded();
-      await runCodex({credentials, startedBy});
+      } = await authAndSetupMachineIfNeeded({ force });
+
+      // Always auto-start daemon for simplicity
+      logger.debug('Ensuring Happy background service is running & matches our version...');
+      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
+        logger.debug('Starting Happy background service...');
+        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env
+        })
+        daemonProcess.unref();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      await runCodex({ credentials, startedBy });
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
@@ -110,31 +132,31 @@ import { execFileSync } from 'node:child_process'
   } else if (subcommand === 'gemini') {
     // Handle gemini subcommands
     const geminiSubcommand = args[1];
-    
+
     // Handle "happy gemini model set <model>" command
     if (geminiSubcommand === 'model' && args[2] === 'set' && args[3]) {
       const modelName = args[3];
       const validModels = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-      
+
       if (!validModels.includes(modelName)) {
         console.error(`Invalid model: ${modelName}`);
         console.error(`Available models: ${validModels.join(', ')}`);
         process.exit(1);
       }
-      
+
       try {
         const { existsSync, readFileSync, writeFileSync, mkdirSync } = require('fs');
         const { join } = require('path');
         const { homedir } = require('os');
-        
+
         const configDir = join(homedir(), '.gemini');
         const configPath = join(configDir, 'config.json');
-        
+
         // Create directory if it doesn't exist
         if (!existsSync(configDir)) {
           mkdirSync(configDir, { recursive: true });
         }
-        
+
         // Read existing config or create new one
         let config: any = {};
         if (existsSync(configPath)) {
@@ -145,10 +167,10 @@ import { execFileSync } from 'node:child_process'
             config = {};
           }
         }
-        
+
         // Update model in config
         config.model = modelName;
-        
+
         // Write config back
         writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
         console.log(`✓ Model set to: ${modelName}`);
@@ -160,19 +182,19 @@ import { execFileSync } from 'node:child_process'
         process.exit(1);
       }
     }
-    
+
     // Handle "happy gemini model get" command
     if (geminiSubcommand === 'model' && args[2] === 'get') {
       try {
         const { existsSync, readFileSync } = require('fs');
         const { join } = require('path');
         const { homedir } = require('os');
-        
+
         const configPaths = [
           join(homedir(), '.gemini', 'config.json'),
           join(homedir(), '.config', 'gemini', 'config.json'),
         ];
-        
+
         let model: string | null = null;
         for (const configPath of configPaths) {
           if (existsSync(configPath)) {
@@ -185,7 +207,7 @@ import { execFileSync } from 'node:child_process'
             }
           }
         }
-        
+
         if (model) {
           console.log(`Current model: ${model}`);
         } else if (process.env.GEMINI_MODEL) {
@@ -199,16 +221,16 @@ import { execFileSync } from 'node:child_process'
         process.exit(1);
       }
     }
-    
+
     // Handle "happy gemini project set <project-id>" command
     if (geminiSubcommand === 'project' && args[2] === 'set' && args[3]) {
       const projectId = args[3];
-      
+
       try {
         const { saveGoogleCloudProjectToConfig } = await import('@/gemini/utils/config');
         const { readCredentials } = await import('@/persistence');
         const { ApiClient } = await import('@/api/api');
-        
+
         // Try to get current user email from Happy cloud token
         let userEmail: string | undefined = undefined;
         try {
@@ -227,7 +249,7 @@ import { execFileSync } from 'node:child_process'
         } catch {
           // If we can't get email, project will be saved globally
         }
-        
+
         saveGoogleCloudProjectToConfig(projectId, userEmail);
         console.log(`✓ Google Cloud Project set to: ${projectId}`);
         if (userEmail) {
@@ -240,13 +262,13 @@ import { execFileSync } from 'node:child_process'
         process.exit(1);
       }
     }
-    
+
     // Handle "happy gemini project get" command
     if (geminiSubcommand === 'project' && args[2] === 'get') {
       try {
         const { readGeminiLocalConfig } = await import('@/gemini/utils/config');
         const config = readGeminiLocalConfig();
-        
+
         if (config.googleCloudProject) {
           console.log(`Current Google Cloud Project: ${config.googleCloudProject}`);
           if (config.googleCloudProjectEmail) {
@@ -271,7 +293,7 @@ import { execFileSync } from 'node:child_process'
         process.exit(1);
       }
     }
-    
+
     // Handle "happy gemini project" (no subcommand) - show help
     if (geminiSubcommand === 'project' && !args[2]) {
       console.log('Usage: happy gemini project <command>');
@@ -286,22 +308,25 @@ import { execFileSync } from 'node:child_process'
       console.log('Guide: https://goo.gle/gemini-cli-auth-docs#workspace-gca');
       process.exit(0);
     }
-    
+
     // Handle gemini command (ACP-based agent)
     try {
       const { runGemini } = await import('@/gemini/runGemini');
-      
+
       // Parse startedBy argument
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let force = false;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--force') {
+          force = true;
         }
       }
-      
+
       const {
         credentials
-      } = await authAndSetupMachineIfNeeded();
+      } = await authAndSetupMachineIfNeeded({ force });
 
       // Auto-start daemon for gemini (same as claude)
       logger.debug('Ensuring Happy background service is running & matches our version...');
@@ -316,7 +341,7 @@ import { execFileSync } from 'node:child_process'
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      await runGemini({credentials, startedBy});
+      await runGemini({ credentials, startedBy });
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
@@ -473,6 +498,7 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
     const options: StartOptions = {}
     let showHelp = false
     let showVersion = false
+    let forceAuth = false
     const unknownArgs: string[] = [] // Collect unknown args to pass through to claude
 
     for (let i = 0; i < args.length; i++) {
@@ -493,6 +519,8 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
         unknownArgs.push('--dangerously-skip-permissions')
       } else if (arg === '--started-by') {
         options.startedBy = args[++i] as 'daemon' | 'terminal'
+      } else if (arg === '--force') {
+        forceAuth = true;
       } else if (arg === '--js-runtime') {
         const runtime = args[++i]
         if (runtime !== 'node' && runtime !== 'bun') {
@@ -562,7 +590,7 @@ ${chalk.bold('Happy supports ALL Claude options!')}
 ${chalk.gray('─'.repeat(60))}
 ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 `)
-      
+
       // Run claude --help and display its output
       // Use execFileSync directly with claude CLI for runtime-agnostic compatibility
       try {
@@ -571,7 +599,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       } catch (e) {
         console.log(chalk.yellow('Could not retrieve claude help. Make sure claude is installed.'))
       }
-      
+
       process.exit(0)
     }
 
@@ -584,10 +612,15 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     // Normal flow - auth and machine setup
     const {
       credentials
-    } = await authAndSetupMachineIfNeeded();
+    } = await authAndSetupMachineIfNeeded({ force: forceAuth });
 
     // Always auto-start daemon for simplicity
     logger.debug('Ensuring Happy background service is running & matches our version...');
+
+    if (forceAuth) {
+      logger.debug('Stopping Happy background service for restart (force auth)...');
+      await stopDaemon();
+    }
 
     if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
       logger.debug('Starting Happy background service...');

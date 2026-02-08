@@ -212,6 +212,28 @@ export AZURE_OPENAI_API_KEY="YOUR_AZURE_API_KEY"
 export AZURE_OPENAI_API_VERSION="2024-02-15-preview"
 export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5-codex"`,
             };
+        case 'gemini':
+            return {
+                setupGuideUrl: 'https://ai.google.dev/gemini-api/docs/api-key',
+                description: 'Google Gemini API',
+                environmentVariables: [
+                    {
+                        name: 'GEMINI_API_KEY',
+                        expectedValue: 'AIza...',
+                        description: 'Your Google Gemini API key',
+                        isSecret: true,
+                    },
+                    {
+                        name: 'GEMINI_MODEL',
+                        expectedValue: 'gemini-2.5-pro',
+                        description: 'Default model version',
+                        isSecret: false,
+                    },
+                ],
+                shellConfigExample: `# Add to ~/.zshrc or ~/.bashrc:
+export GEMINI_API_KEY="AIza..."
+export GEMINI_MODEL="gemini-2.5-pro"`,
+            };
         default:
             return null;
     }
@@ -339,6 +361,21 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                 updatedAt: Date.now(),
                 version: '1.0.0',
             };
+        case 'gemini':
+            return {
+                id: 'gemini',
+                name: 'Google Gemini',
+                anthropicConfig: {},
+                environmentVariables: [
+                    { name: 'GEMINI_API_KEY', value: '' },
+                    { name: 'GEMINI_MODEL', value: 'gemini-2.5-pro' },
+                ],
+                compatibility: { claude: false, codex: false, gemini: true },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
+            };
         default:
             return null;
     }
@@ -372,6 +409,11 @@ export const DEFAULT_PROFILES = [
     {
         id: 'azure-openai',
         name: 'Azure OpenAI',
+        isBuiltIn: true,
+    },
+    {
+        id: 'gemini',
+        name: 'Google Gemini',
         isBuiltIn: true,
     }
 ];

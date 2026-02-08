@@ -1,86 +1,117 @@
-<div align="center"><img src="/.github/logotype-dark.png" width="400" title="Happy Coder" alt="Happy Coder"/></div>
+<div align="center"><img src="/.github/logotype-dark.png" width="400" title="Happy Coder Pro" alt="Happy Coder Pro"/></div>
 
 <h1 align="center">
-  Mobile and Web Client for Claude Code & Codex
+  Happy Coder Pro - 增强版移动端/Web 客户端
 </h1>
 
 <h4 align="center">
-Use Claude Code or Codex from anywhere with end-to-end encryption.
+支持 Claude Code、Codex 和 Gemini，随时随地使用端到端加密访问 AI 编程助手。
 </h4>
 
 <div align="center">
-  
-[📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [📚 **Documentation**](https://happy.engineering/docs/) • [💬 **Discord**](https://discord.gg/fX9WBAhyfD)
+
+[📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://web.vyibc.com) • [💬 **Discord**](https://discord.gg/fX9WBAhyfD)
 
 </div>
 
 <img width="5178" height="2364" alt="github" src="/.github/header.png" />
 
+---
 
-<h3 align="center">
-Step 1: Download App
-</h3>
+## 🚀 快速开始
 
-<div align="center">
-<a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><img width="135" height="39" alt="appstore" src="https://github.com/user-attachments/assets/45e31a11-cf6b-40a2-a083-6dc8d1f01291" /></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><img width="135" height="39" alt="googleplay" src="https://github.com/user-attachments/assets/acbba639-858f-4c74-85c7-92a4096efbf5" /></a>
-</div>
-
-<h3 align="center">
-Step 2: Install CLI on your computer
-</h3>
+### 第一步：安装 CLI
 
 ```bash
-npm install -g happy-coder
+npm install -g happy-coder-pro
 ```
 
-<h3 align="center">
-Step 3: Start using `happy` instead of `claude` or `codex`
-</h3>
+### 第二步：启动 Happy Pro
 
 ```bash
+# 替代 claude 命令
+happy-pro
 
-# Instead of: claude
-# Use: happy
-
-happy
-
-# Instead of: codex
-# Use: happy codex
-
-happy codex
-
+# 替代 codex 命令
+happy-pro codex
 ```
 
-<div align="center"><img src="/.github/mascot.png" width="200" title="Happy Coder" alt="Happy Coder"/></div>
+---
 
-## How does it work?
+## ✨ 相比原版的主要优化
 
-On your computer, run `happy` instead of `claude` or `happy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
+本项目 Fork 自 [slopus/happy](https://github.com/slopus/happy)，我们进行了以下增强：
 
-## 🔥 Why Happy Coder?
+### 🤖 Gemini 模型支持
+- 完整支持 Google Gemini 2.5 Pro/Flash/Lite 系列模型
+- 支持在会话中显示模型名称标识（如 `[Gemini 2.5 Pro]`、`[Sonnet 4]`）
 
-- 📱 **Mobile access to Claude Code and Codex** - Check what your AI is building while away from your desk
-- 🔔 **Push notifications** - Get alerted when Claude Code and Codex needs permission or encounters errors  
-- ⚡ **Switch devices instantly** - Take control from phone or desktop with one keypress
-- 🔐 **End-to-end encrypted** - Your code never leaves your devices unencrypted
-- 🛠️ **Open source** - Audit the code yourself. No telemetry, no tracking
+### 🖥️ Web 端体验优化
+- **会话悬停操作菜单**：鼠标悬停时显示归档和删除按钮
+- **操作二次确认**：使用 Modal.confirm 防止误操作
+- **优化删除按钮样式**：红色背景和图标标识危险操作
 
-## 📦 Project Components
+### 🛡️ 权限模式 UI
+- 新增权限模式选择器组件
+- 更直观的权限配置界面
 
-- **[happy UI](https://github.com/slopus/happy/tree/main/expo-app)** - Web UI + mobile client (Expo)
-- **[happy-cli](https://github.com/slopus/happy/tree/main/cli)** - Command-line interface for Claude Code and Codex
-- **[happy-server](https://github.com/slopus/happy/tree/main/server)** - Backend server for encrypted sync
+### 🔧 开发工具增强
+- **Daemon 自动重启**：强制认证后自动重新启动 daemon
+- **本地开发脚本**：简化开发环境启动流程
+- **调试信息增强**：在 SessionRestartButton 添加详细调试信息
 
-## 🏠 Who We Are
+### 🌍 国际化支持
+- 完善的中文翻译支持
+- 多语言界面切换
 
-We're engineers scattered across Bay Area coffee shops and hacker houses, constantly checking how our AI coding agents are progressing on our pet projects during lunch breaks. Happy Coder was born from the frustration of not being able to peek at our AI coding tools building our side hustles while we're away from our keyboards. We believe the best tools come from scratching your own itch and sharing with the community.
+---
 
-## 📚 Documentation & Contributing
+## 🔧 开发者模式
 
-- **[Documentation Website](https://happy.engineering/docs/)** - Learn how to use Happy Coder effectively
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development setup including iOS, Android, and macOS desktop variant builds
-- **[Edit docs at github.com/slopus/slopus.github.io](https://github.com/slopus/slopus.github.io)** - Help improve our documentation and guides
+如果你想使用开发服务器，可以这样启动：
 
-## License
+```bash
+cd /Users/huchangfeng/happy-dev/cli
+HAPPY_MODE=remote \
+HAPPY_HOME_DIR=~/.happy-dev \
+HAPPY_VARIANT=dev \
+HAPPY_SERVER_URL=https://server.vyibc.com \
+HAPPY_WEBAPP_URL=https://web.vyibc.com \
+corepack yarn dev --force
+```
 
-MIT License - see [LICENSE](LICENSE) for details.
+---
+
+## 📦 项目组件
+
+| 组件 | 说明 |
+|------|------|
+| [expo-app](./expo-app) | Web UI + 移动端客户端 (Expo) |
+| [cli](./cli) | 命令行工具，支持 Claude Code、Codex 和 Gemini |
+| [server](./server) | 后端服务器，负责加密同步 |
+
+---
+
+## 🔐 安全特性
+
+- **端到端加密**：你的代码在设备间传输时始终保持加密状态
+- **开源透明**：可以自行审计代码，无遥测、无追踪
+- **本地优先**：敏感数据不会离开你的设备
+
+---
+
+## 📱 设备切换
+
+在电脑上运行 `happy-pro` 替代 `claude`，或 `happy-pro codex` 替代 `codex`。当你想从手机控制编程助手时，它会以远程模式重启会话。想切回电脑？只需按下任意键。
+
+---
+
+## 🙏 致谢
+
+感谢 [slopus/happy](https://github.com/slopus/happy) 原项目团队的出色工作！
+
+---
+
+## 📄 License
+
+MIT License - 详见 [LICENSE](LICENSE)。

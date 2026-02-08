@@ -1,9 +1,9 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { Text, View, Image, Platform } from "react-native";
+import { Text, View, Image, Platform, TextInput } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
-import { encodeBase64 } from "@/encryption/base64";
+import { encodeBase64, decodeBase64 } from "@/encryption/base64";
 import { authGetToken } from "@/auth/authGetToken";
 import { router, useRouter } from "expo-router";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -14,6 +14,9 @@ import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { HomeHeaderNotAuth } from "@/components/HomeHeader";
 import { MainView } from "@/components/MainView";
 import { t } from '@/text';
+import { normalizeSecretKey } from '@/auth/secretKeyBackup';
+import { Modal } from '@/modal';
+import { useState } from 'react';
 
 export default function Home() {
     const auth = useAuth();
@@ -36,6 +39,8 @@ function NotAuthenticated() {
     const isLandscape = useIsLandscape();
     const insets = useSafeAreaInsets();
 
+    const [secretKey, setSecretKey] = useState('');
+
     const createAccount = async () => {
         try {
             const secret = await getRandomBytesAsync(32);
@@ -48,6 +53,57 @@ function NotAuthenticated() {
             console.error('Error creating account', error);
         }
     }
+
+    const handleRestore = async () => {
+        const trimmedKey = secretKey.trim();
+        if (!trimmedKey) return;
+
+        try {
+            const normalizedKey = normalizeSecretKey(trimmedKey);
+            const secretBytes = decodeBase64(normalizedKey, 'base64url');
+            if (secretBytes.length !== 32) throw new Error('Invalid key length');
+
+            const token = await authGetToken(secretBytes);
+            if (!token) throw new Error('Auth failed');
+
+            await auth.login(token, normalizedKey);
+            trackAccountRestored();
+        } catch (error) {
+            Modal.alert(t('common.error'), t('connect.invalidSecretKey'));
+        }
+    };
+
+    const InputSection = (
+        <View style={{ width: '100%', maxWidth: 280, marginTop: 24 }}>
+            <TextInput
+                style={{
+                    backgroundColor: theme.colors.input.background,
+                    padding: 16,
+                    borderRadius: 12,
+                    fontFamily: 'IBMPlexMono-Regular',
+                    fontSize: 13,
+                    color: theme.colors.input.text,
+                    borderWidth: 1,
+                    borderColor: theme.colors.textSecondary,
+                    marginBottom: 12,
+                    height: 50
+                }}
+                placeholder="Paste Secret Key (LXGPQ-...)"
+                placeholderTextColor={theme.colors.input.placeholder}
+                value={secretKey}
+                onChangeText={setSecretKey}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                onSubmitEditing={handleRestore}
+                returnKeyType="go"
+            />
+            <RoundButton
+                title={secretKey ? "Login with Key" : t('welcome.createAccount')}
+                action={secretKey ? handleRestore : createAccount}
+                display={secretKey ? undefined : 'inverted'}
+            />
+        </View>
+    );
 
     const portraitLayout = (
         <View style={styles.portraitContainer}>
@@ -62,47 +118,18 @@ function NotAuthenticated() {
             <Text style={styles.subtitle}>
                 {t('welcome.subtitle')}
             </Text>
-            {Platform.OS !== 'android' && Platform.OS !== 'ios' ? (
-                <>
-                    <View style={styles.buttonContainer}>
-                        <RoundButton
-                            title={t('welcome.loginWithMobileApp')}
-                            onPress={() => {
-                                trackAccountRestored();
-                                router.push('/restore');
-                            }}
-                        />
-                    </View>
-                    <View style={styles.buttonContainerSecondary}>
-                        <RoundButton
-                            size="normal"
-                            title={t('welcome.createAccount')}
-                            action={createAccount}
-                            display="inverted"
-                        />
-                    </View>
-                </>
-            ) : (
-                <>
-                    <View style={styles.buttonContainer}>
-                        <RoundButton
-                            title={t('welcome.createAccount')}
-                            action={createAccount}
-                        />
-                    </View>
-                    <View style={styles.buttonContainerSecondary}>
-                        <RoundButton
-                            size="normal"
-                            title={t('welcome.linkOrRestoreAccount')}
-                            onPress={() => {
-                                trackAccountRestored();
-                                router.push('/restore');
-                            }}
-                            display="inverted"
-                        />
-                    </View>
-                </>
-            )}
+            {InputSection}
+            <View style={styles.buttonContainerSecondary}>
+                <RoundButton
+                    size="normal"
+                    title={t('welcome.linkOrRestoreAccount')}
+                    onPress={() => {
+                        trackAccountRestored();
+                        router.push('/restore');
+                    }}
+                    display="inverted"
+                />
+            </View>
         </View>
     );
 
@@ -123,46 +150,18 @@ function NotAuthenticated() {
                     <Text style={styles.landscapeSubtitle}>
                         {t('welcome.subtitle')}
                     </Text>
-                    {Platform.OS !== 'android' && Platform.OS !== 'ios'
-                        ? (<>
-                            <View style={styles.landscapeButtonContainer}>
-                                <RoundButton
-                                    title={t('welcome.loginWithMobileApp')}
-                                    onPress={() => {
-                                        trackAccountRestored();
-                                        router.push('/restore');
-                                    }}
-                                />
-                            </View>
-                            <View style={styles.landscapeButtonContainerSecondary}>
-                                <RoundButton
-                                    size="normal"
-                                    title={t('welcome.createAccount')}
-                                    action={createAccount}
-                                    display="inverted"
-                                />
-                            </View>
-                        </>)
-                        : (<>
-                            <View style={styles.landscapeButtonContainer}>
-                                <RoundButton
-                                    title={t('welcome.createAccount')}
-                                    action={createAccount}
-                                />
-                            </View>
-                            <View style={styles.landscapeButtonContainerSecondary}>
-                                <RoundButton
-                                    size="normal"
-                                    title={t('welcome.linkOrRestoreAccount')}
-                                    onPress={() => {
-                                        trackAccountRestored();
-                                        router.push('/restore');
-                                    }}
-                                    display="inverted"
-                                />
-                            </View>
-                        </>)
-                    }
+                    {InputSection}
+                    <View style={styles.landscapeButtonContainerSecondary}>
+                        <RoundButton
+                            size="normal"
+                            title={t('welcome.linkOrRestoreAccount')}
+                            onPress={() => {
+                                trackAccountRestored();
+                                router.push('/restore');
+                            }}
+                            display="inverted"
+                        />
+                    </View>
                 </View>
             </View>
         </View>

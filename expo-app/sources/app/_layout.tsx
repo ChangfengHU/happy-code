@@ -98,53 +98,40 @@ async function loadFonts() {
             typeof window !== 'undefined' &&
             (window as any).__TAURI_INTERNALS__ !== undefined;
 
-        if (!isTauri) {
-            // Normal font loading for non-Tauri environments (native and regular web)
-            await Fonts.loadAsync({
-                // Keep existing font
-                SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
+        const isWeb = Platform.OS === 'web';
+        const fontManifest = {
+            // Keep existing font
+            SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
 
-                // IBM Plex Sans family
-                'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
-                'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
-                'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
+            // IBM Plex Sans family
+            'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
+            'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
+            'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
 
-                // IBM Plex Mono family  
-                'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
-                'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
-                'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
+            // IBM Plex Mono family
+            'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
+            'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
+            'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
 
-                // Bricolage Grotesque  
-                'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
+            // Bricolage Grotesque
+            'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
 
-                ...FontAwesome.font,
-            });
+            ...FontAwesome.font,
+        };
+
+        if (isWeb && !isTauri) {
+            return;
+        }
+
+        if (!isWeb && !isTauri) {
+            await Fonts.loadAsync(fontManifest);
         } else {
-            // For Tauri, skip Font Face Observer as fonts are loaded via CSS
-            console.log('Do not wait for fonts to load');
+            // On web (including Tauri), do not block app init on font loading.
             (async () => {
                 try {
-                    await Fonts.loadAsync({
-                        // Keep existing font
-                        SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
-
-                        // IBM Plex Sans family
-                        'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
-                        'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
-                        'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
-
-                        // IBM Plex Mono family  
-                        'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
-                        'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
-                        'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
-
-                        // Bricolage Grotesque  
-                        'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
-
-                        ...FontAwesome.font,
-                    });
+                    await Fonts.loadAsync(fontManifest);
                 } catch (e) {
-                    // Ignore
+                    // Ignore font load failures on web.
                 }
             })();
         }

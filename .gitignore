@@ -48,3 +48,7 @@ CLAUDE.local.md
 
 # Development planning notes (keep local, don't commit)
 notes/
+
+# Temporary files and logs
+.tmp/
+.run-logs/

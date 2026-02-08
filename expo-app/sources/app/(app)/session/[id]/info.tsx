@@ -1,4 +1,5 @@
 import React, { useCallback } from 'react';
+import SessionRestartButton from '@/components/SessionRestartButton';
 import { View, Text, Animated } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -66,7 +67,7 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
-    
+
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
 
@@ -247,6 +248,13 @@ function SessionInfoContent({ session }: { session: Session }) {
                     />
                 </ItemGroup>
 
+                {/* Restart Action - Only show if disconnected */}
+                {!sessionStatus.isConnected && (
+                    <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                        <SessionRestartButton session={session} />
+                    </View>
+                )}
+
                 {/* Quick Actions */}
                 <ItemGroup title={t('sessionInfo.quickActions')}>
                     {session.metadata?.machineId && (
@@ -392,7 +400,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                     showChevron={false}
                                 />
                                 <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
-                                    <CodeView 
+                                    <CodeView
                                         code={JSON.stringify(session.agentState, null, 2)}
                                         language="json"
                                     />
@@ -407,7 +415,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                     showChevron={false}
                                 />
                                 <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
-                                    <CodeView 
+                                    <CodeView
                                         code={JSON.stringify(session.metadata, null, 2)}
                                         language="json"
                                     />
@@ -422,7 +430,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                                     showChevron={false}
                                 />
                                 <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
-                                    <CodeView 
+                                    <CodeView
                                         code={JSON.stringify({
                                             isConnected: sessionStatus.isConnected,
                                             statusText: sessionStatus.statusText,
@@ -442,7 +450,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                             showChevron={false}
                         />
                         <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
-                            <CodeView 
+                            <CodeView
                                 code={JSON.stringify(session, null, 2)}
                                 language="json"
                             />

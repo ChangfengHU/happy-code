@@ -73,21 +73,53 @@ export function useSessionStatus(session: Session): SessionStatus {
 }
 
 /**
+ * Get a display name for the session's model/flavor.
+ */
+export function getSessionModelName(session: Session): string | null {
+    if (!session.metadata?.flavor) return null;
+
+    const flavor = session.metadata.flavor;
+
+    // Map flavor codes to display names
+    const modelNames: Record<string, string> = {
+        'claude-sonnet-4-20250514': 'Sonnet 4',
+        'claude-opus-4-20250514': 'Opus 4',
+        'claude-3-5-sonnet-20241022': '3.5 Sonnet',
+        'claude-3-5-sonnet-20240620': '3.5 Sonnet',
+        'claude-3-opus-20240229': '3 Opus',
+        'claude-3-haiku-20240307': '3 Haiku',
+        'gemini-2.5-pro': 'Gemini 2.5 Pro',
+        'gemini-2.5-flash': 'Gemini 2.5 Flash',
+        'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
+    };
+
+    return modelNames[flavor] || flavor;
+}
+
+/**
  * Extracts a display name from a session's metadata path.
  * Returns the last segment of the path, or 'unknown' if no path is available.
+ * Optionally prepends model name if available.
  */
-export function getSessionName(session: Session): string {
-    if (session.metadata?.summary) {
-        return session.metadata.summary.text;
-    } else if (session.metadata) {
-        const segments = session.metadata.path.split('/').filter(Boolean);
-        const lastSegment = segments.pop();
-        if (!lastSegment) {
-            return t('status.unknown');
-        }
-        return lastSegment;
+export function getSessionName(session: Session, options?: { withModelPrefix?: boolean }): string {
+    const modelName = options?.withModelPrefix ? getSessionModelName(session) : null;
+    const baseName = session.metadata?.summary
+        ? session.metadata.summary.text
+        : session.metadata
+            ? (() => {
+                const segments = session.metadata!.path.split('/').filter(Boolean);
+                const lastSegment = segments.pop();
+                if (!lastSegment) {
+                    return t('status.unknown');
+                }
+                return lastSegment;
+            })()
+            : t('status.unknown');
+
+    if (modelName) {
+        return `[${modelName}] ${baseName}`;
     }
-    return t('status.unknown');
+    return baseName;
 }
 
 /**

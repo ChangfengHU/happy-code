@@ -40,7 +40,7 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
       // Mostly increased for stress test
       signal: AbortSignal.timeout(timeout)
     });
-    
+
     if (!response.ok) {
       const errorMessage = `Request failed: ${path}, HTTP ${response.status}`;
       logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
@@ -48,7 +48,7 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
         error: errorMessage
       };
     }
-    
+
     return await response.json();
   } catch (error) {
     const errorMessage = `Request failed: ${path}, ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -152,16 +152,16 @@ export async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<b
     logger.debug('[DAEMON CONTROL] No daemon state found, returning false');
     return false;
   }
-  
+
   try {
     // Read package.json on demand from disk - so we are guaranteed to get the latest version
     const packageJsonPath = join(projectPath(), 'package.json');
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     const currentCliVersion = packageJson.version;
-    
+
     logger.debug(`[DAEMON CONTROL] Current CLI version: ${currentCliVersion}, Daemon started with version: ${state.startedWithCliVersion}`);
     return currentCliVersion === state.startedWithCliVersion;
-    
+
     // PREVIOUS IMPLEMENTATION - Keeping this commented in case we need it
     // Kirill does not understand how the upgrade of npm packages happen and whether 
     // we will get a new path or not when happy-coder is upgraded globally.

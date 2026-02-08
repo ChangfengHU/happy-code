@@ -551,6 +551,20 @@ export const pt: TranslationStructure = {
         fileEmpty: 'Arquivo está vazio',
         noChanges: 'Nenhuma alteração para exibir',
     },
+    directoryPicker: {
+        title: 'Selecionar pasta',
+        currentFolder: 'Pasta atual',
+        currentFolderHint: 'Escolha uma subpasta ou use a pasta atual',
+        useThisFolder: 'Usar esta pasta',
+        folders: 'Pastas',
+        parentFolder: 'Pasta superior',
+        loading: 'Carregando pastas...',
+        empty: 'Nenhuma subpasta encontrada',
+        loadFailed: 'Falha ao carregar pastas',
+        refresh: 'Atualizar',
+        pathUnavailable: 'Caminho da sessão indisponível',
+        sessionUnavailable: 'Sessão indisponível',
+    },
 
     settingsVoice: {
         // Voice settings screen

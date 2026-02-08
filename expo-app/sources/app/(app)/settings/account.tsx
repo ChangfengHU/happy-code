@@ -178,14 +178,14 @@ export default React.memo(() => {
                         gemini: { name: 'Google Gemini', icon: require('@/assets/images/icon-gemini.png'), tintColor: null },
                         openai: { name: 'OpenAI Codex', icon: require('@/assets/images/icon-gpt.png'), tintColor: theme.colors.text }
                     };
-                    
+
                     // Filter to only known services
                     const displayServices = profile.connectedServices.filter(
                         service => service in knownServices
                     );
-                    
+
                     if (displayServices.length === 0) return null;
-                    
+
                     return (
                         <ItemGroup title={t('settings.connectedAccounts')}>
                             {displayServices.map(service => {
@@ -269,6 +269,15 @@ export default React.memo(() => {
                                 </Text>
                             </View>
                         </Pressable>
+                        <Item
+                            title="Restore from Key"
+                            subtitle="Login with another Secret Key"
+                            icon={<Ionicons name="key-outline" size={29} color={theme.colors.text} />}
+                            showChevron={true}
+                            onPress={() => {
+                                router.push('/restore/manual');
+                            }}
+                        />
                     </ItemGroup>
                 )}
 

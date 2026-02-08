@@ -10,14 +10,25 @@ import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { t } from '@/text';
+import { useAuth } from '@/auth/AuthContext';
+import { getRandomBytesAsync } from 'expo-crypto';
+import { encodeBase64 } from '@/encryption/base64';
+import { authGetToken } from '@/auth/authGetToken';
+import { trackAccountCreated } from '@/track';
 
 export default function TerminalConnectScreen() {
     const router = useRouter();
+    const { isAuthenticated, login } = useAuth();
     const [publicKey, setPublicKey] = useState<string | null>(null);
     const [hashProcessed, setHashProcessed] = useState(false);
+    const [isCreatingAccount, setIsCreatingAccount] = useState(false);
+    const storageKey = 'happy-terminal-public-key';
     const { processAuthUrl, isLoading } = useConnectTerminal({
         onSuccess: () => {
-            router.back();
+            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                window.sessionStorage.removeItem(storageKey);
+            }
+            router.replace('/terminal');
         }
     });
 
@@ -28,21 +39,60 @@ export default function TerminalConnectScreen() {
             if (hash.startsWith('#key=')) {
                 const key = hash.substring(5); // Remove '#key='
                 setPublicKey(key);
-                
+                window.sessionStorage.setItem(storageKey, key);
+
                 // Clear the hash from URL to prevent exposure in browser history
                 window.history.replaceState(null, '', window.location.pathname + window.location.search);
                 setHashProcessed(true);
             } else {
+                const cachedKey = window.sessionStorage.getItem(storageKey);
+                if (cachedKey) {
+                    setPublicKey(cachedKey);
+                }
                 setHashProcessed(true);
             }
         }
     }, [hashProcessed]);
 
+    // 用户登录成功后自动处理连接
+    useEffect(() => {
+        if (isAuthenticated && publicKey && hashProcessed) {
+            // 如果用户刚登录并且有保存的 publicKey，自动处理连接
+            const cachedKey = Platform.OS === 'web' && typeof window !== 'undefined'
+                ? window.sessionStorage.getItem(storageKey)
+                : null;
+            if (cachedKey) {
+                handleConnect();
+            }
+        }
+    }, [isAuthenticated, publicKey, hashProcessed]);
+
     const handleConnect = async () => {
         if (publicKey) {
             // Convert the hash key format to the expected happy:// URL format
             const authUrl = `happy://terminal?${publicKey}`;
-            await processAuthUrl(authUrl);
+            const success = await processAuthUrl(authUrl);
+            if (success && Platform.OS === 'web' && typeof window !== 'undefined') {
+                window.sessionStorage.removeItem(storageKey);
+            }
+        }
+    };
+
+    // 创建账户并立即连接终端
+    const handleCreateAccountAndConnect = async () => {
+        setIsCreatingAccount(true);
+        try {
+            const secret = await getRandomBytesAsync(32);
+            const token = await authGetToken(secret);
+            if (token && secret) {
+                await login(token, encodeBase64(secret, 'base64url'));
+                trackAccountCreated();
+                // 登录成功后，useEffect 会自动调用 handleConnect
+            }
+        } catch (error) {
+            console.error('创建账户失败', error);
+        } finally {
+            setIsCreatingAccount(false);
         }
     };
 
@@ -55,31 +105,31 @@ export default function TerminalConnectScreen() {
         return (
             <ItemList>
                 <ItemGroup>
-                    <View style={{ 
+                    <View style={{
                         alignItems: 'center',
                         paddingVertical: 32,
                         paddingHorizontal: 16
                     }}>
-                        <Ionicons 
-                            name="laptop-outline" 
-                            size={64} 
-                            color="#8E8E93" 
-                            style={{ marginBottom: 16 }} 
+                        <Ionicons
+                            name="laptop-outline"
+                            size={64}
+                            color="#8E8E93"
+                            style={{ marginBottom: 16 }}
                         />
-                        <Text style={{ 
-                            ...Typography.default('semiBold'), 
-                            fontSize: 18, 
+                        <Text style={{
+                            ...Typography.default('semiBold'),
+                            fontSize: 18,
                             textAlign: 'center',
-                            marginBottom: 12 
+                            marginBottom: 12
                         }}>
                             {t('terminal.webBrowserRequired')}
                         </Text>
-                        <Text style={{ 
-                            ...Typography.default(), 
-                            fontSize: 14, 
-                            color: '#666', 
+                        <Text style={{
+                            ...Typography.default(),
+                            fontSize: 14,
+                            color: '#666',
                             textAlign: 'center',
-                            lineHeight: 20 
+                            lineHeight: 20
                         }}>
                             {t('terminal.webBrowserRequiredDescription')}
                         </Text>
@@ -94,7 +144,7 @@ export default function TerminalConnectScreen() {
         return (
             <ItemList>
                 <ItemGroup>
-                    <View style={{ 
+                    <View style={{
                         alignItems: 'center',
                         paddingVertical: 32,
                         paddingHorizontal: 16
@@ -113,32 +163,32 @@ export default function TerminalConnectScreen() {
         return (
             <ItemList>
                 <ItemGroup>
-                    <View style={{ 
+                    <View style={{
                         alignItems: 'center',
                         paddingVertical: 32,
                         paddingHorizontal: 16
                     }}>
-                        <Ionicons 
-                            name="warning-outline" 
-                            size={48} 
-                            color="#FF3B30" 
-                            style={{ marginBottom: 16 }} 
+                        <Ionicons
+                            name="warning-outline"
+                            size={48}
+                            color="#FF3B30"
+                            style={{ marginBottom: 16 }}
                         />
-                        <Text style={{ 
-                            ...Typography.default('semiBold'), 
-                            fontSize: 16, 
+                        <Text style={{
+                            ...Typography.default('semiBold'),
+                            fontSize: 16,
                             color: '#FF3B30',
                             textAlign: 'center',
-                            marginBottom: 8 
+                            marginBottom: 8
                         }}>
                             {t('terminal.invalidConnectionLink')}
                         </Text>
-                        <Text style={{ 
-                            ...Typography.default(), 
-                            fontSize: 14, 
-                            color: '#666', 
+                        <Text style={{
+                            ...Typography.default(),
+                            fontSize: 14,
+                            color: '#666',
                             textAlign: 'center',
-                            lineHeight: 20 
+                            lineHeight: 20
                         }}>
                             {t('terminal.invalidConnectionLinkDescription')}
                         </Text>
@@ -153,31 +203,31 @@ export default function TerminalConnectScreen() {
         <ItemList>
             {/* Connection Request Header */}
             <ItemGroup>
-                <View style={{ 
+                <View style={{
                     alignItems: 'center',
                     paddingVertical: 24,
                     paddingHorizontal: 16
                 }}>
-                    <Ionicons 
-                        name="terminal-outline" 
-                        size={48} 
-                        color="#007AFF" 
-                        style={{ marginBottom: 16 }} 
+                    <Ionicons
+                        name="terminal-outline"
+                        size={48}
+                        color="#007AFF"
+                        style={{ marginBottom: 16 }}
                     />
-                    <Text style={{ 
-                        ...Typography.default('semiBold'), 
-                        fontSize: 20, 
+                    <Text style={{
+                        ...Typography.default('semiBold'),
+                        fontSize: 20,
                         textAlign: 'center',
                         marginBottom: 12
                     }}>
                         {t('terminal.connectTerminal')}
                     </Text>
-                    <Text style={{ 
-                        ...Typography.default(), 
-                        fontSize: 14, 
-                        color: '#666', 
+                    <Text style={{
+                        ...Typography.default(),
+                        fontSize: 14,
+                        color: '#666',
                         textAlign: 'center',
-                        lineHeight: 20 
+                        lineHeight: 20
                     }}>
                         {t('terminal.terminalRequestDescription')}
                     </Text>
@@ -202,18 +252,28 @@ export default function TerminalConnectScreen() {
 
             {/* Action Buttons */}
             <ItemGroup>
-                <View style={{ 
+                <View style={{
                     paddingHorizontal: 16,
                     paddingVertical: 16,
-                    gap: 12 
+                    gap: 12
                 }}>
-                    <RoundButton
-                        title={isLoading ? t('terminal.connecting') : t('terminal.acceptConnection')}
-                        onPress={handleConnect}
-                        size="large"
-                        disabled={isLoading}
-                        loading={isLoading}
-                    />
+                    {isAuthenticated ? (
+                        <RoundButton
+                            title={isLoading ? t('terminal.connecting') : t('terminal.acceptConnection')}
+                            onPress={handleConnect}
+                            size="large"
+                            disabled={isLoading}
+                            loading={isLoading}
+                        />
+                    ) : (
+                        <RoundButton
+                            title={isCreatingAccount ? t('terminal.creatingAccount') : t('terminal.createAccountAndConnect')}
+                            onPress={handleCreateAccountAndConnect}
+                            size="large"
+                            disabled={isCreatingAccount}
+                            loading={isCreatingAccount}
+                        />
+                    )}
                     <RoundButton
                         title={t('terminal.reject')}
                         onPress={handleReject}
@@ -225,7 +285,7 @@ export default function TerminalConnectScreen() {
             </ItemGroup>
 
             {/* Security Notice */}
-            <ItemGroup 
+            <ItemGroup
                 title={t('terminal.security')}
                 footer={t('terminal.securityFooter')}
             >

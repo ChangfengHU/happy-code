@@ -60,8 +60,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                 const result = await machineBash(
                     machineId,
                     '(command -v claude >/dev/null 2>&1 && echo "claude:true" || echo "claude:false") && ' +
-                    '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false") && ' +
-                    '(command -v gemini >/dev/null 2>&1 && echo "gemini:true" || echo "gemini:false")',
+                    '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false")',
                     '/'
                 );
 
@@ -71,7 +70,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                 if (result.success && result.exitCode === 0) {
                     // Parse output: "claude:true\ncodex:false\ngemini:false"
                     const lines = result.stdout.trim().split('\n');
-                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean } = {};
+                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean } = { gemini: true };
 
                     lines.forEach(line => {
                         const [cli, status] = line.split(':');
@@ -125,4 +124,109 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
     }, [machineId]);
 
     return availability;
+}
+
+/**
+ * Detects CLIs for multiple machines in parallel.
+ * Useful for machine picker lists.
+ */
+export function useBatchCLIDetection(machines: Array<{ id: string }>): Record<string, CLIAvailability> {
+    const [availabilityMap, setAvailabilityMap] = useState<Record<string, CLIAvailability>>({});
+
+    // Create a stable string of machine IDs to trigger effect only when list changes
+    const machineIdsKey = machines.map(m => m.id).sort().join(',');
+
+    useEffect(() => {
+        if (machines.length === 0) return;
+
+        let cancelled = false;
+
+        // Mark all as detecting if not already present
+        setAvailabilityMap(prev => {
+            const next = { ...prev };
+            machines.forEach(m => {
+                if (!next[m.id]) {
+                    next[m.id] = {
+                        claude: null,
+                        codex: null,
+                        gemini: null,
+                        isDetecting: true,
+                        timestamp: 0
+                    };
+                }
+            });
+            return next;
+        });
+
+        const checkMachine = async (machineId: string) => {
+            try {
+                // Use the same detection command logic
+                const result = await machineBash(
+                    machineId,
+                    '(command -v claude >/dev/null 2>&1 && echo "claude:true" || echo "claude:false") && ' +
+                    '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false")',
+                    '/'
+                );
+
+                if (cancelled) return;
+
+                if (result.success && result.exitCode === 0) {
+                    const lines = result.stdout.trim().split('\n');
+                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean } = { gemini: true };
+                    lines.forEach(line => {
+                        const [cli, status] = line.split(':');
+                        if (cli && status) {
+                            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini'] = status.trim() === 'true';
+                        }
+                    });
+
+                    setAvailabilityMap(prev => ({
+                        ...prev,
+                        [machineId]: {
+                            claude: cliStatus.claude ?? null,
+                            codex: cliStatus.codex ?? null,
+                            gemini: cliStatus.gemini ?? null,
+                            isDetecting: false,
+                            timestamp: Date.now(),
+                        }
+                    }));
+                } else {
+                    // Failed
+                    setAvailabilityMap(prev => ({
+                        ...prev,
+                        [machineId]: {
+                            claude: null,
+                            codex: null,
+                            gemini: null,
+                            isDetecting: false,
+                            timestamp: 0,
+                            error: result.stderr || 'Detection failed'
+                        }
+                    }));
+                }
+            } catch (error) {
+                if (cancelled) return;
+                setAvailabilityMap(prev => ({
+                    ...prev,
+                    [machineId]: {
+                        claude: null,
+                        codex: null,
+                        gemini: null,
+                        isDetecting: false,
+                        timestamp: 0,
+                        error: error instanceof Error ? error.message : 'Network error'
+                    }
+                }));
+            }
+        };
+
+        // Run checks in parallel
+        machines.forEach(m => checkMachine(m.id));
+
+        return () => {
+            cancelled = true;
+        };
+    }, [machineIdsKey]);
+
+    return availabilityMap;
 }

@@ -561,6 +561,20 @@ export const pl: TranslationStructure = {
         fileEmpty: 'Plik jest pusty',
         noChanges: 'Brak zmian do wyświetlenia',
     },
+    directoryPicker: {
+        title: 'Wybierz folder',
+        currentFolder: 'Bieżący folder',
+        currentFolderHint: 'Wybierz podfolder lub użyj bieżącego folderu',
+        useThisFolder: 'Użyj tego folderu',
+        folders: 'Foldery',
+        parentFolder: 'Folder nadrzędny',
+        loading: 'Ładowanie folderów...',
+        empty: 'Brak podfolderów',
+        loadFailed: 'Nie udało się załadować folderów',
+        refresh: 'Odśwież',
+        pathUnavailable: 'Ścieżka sesji jest niedostępna',
+        sessionUnavailable: 'Sesja jest niedostępna',
+    },
 
     settingsVoice: {
         // Voice settings screen
