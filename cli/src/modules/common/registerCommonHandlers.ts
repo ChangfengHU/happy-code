@@ -9,6 +9,7 @@ import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath, validatePathWithinRoots } from './pathSecurity';
+import { DirectoryCache } from './DirectoryCache';
 
 const execAsync = promisify(exec);
 
@@ -147,7 +148,7 @@ export type SpawnSessionResult =
 /**
  * Register all RPC handlers with the session
  */
-export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string) {
+export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string, directoryCache?: DirectoryCache) {
 
     // Shell command handler - executes commands in the default shell
     rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async (data) => {
@@ -319,7 +320,7 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         }
     });
 
-    // List directory handler
+    // List directory handler - 优先使用缓存
     rpcHandlerManager.registerHandler<ListDirectoryRequest, ListDirectoryResponse>('listDirectory', async (data) => {
         logger.debug('List directory request:', data.path);
 
@@ -331,6 +332,15 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         }
 
         try {
+            // 尝试从缓存读取
+            if (directoryCache) {
+                const cachedEntries = await directoryCache.listDirectory(data.path);
+                if (cachedEntries) {
+                    return { success: true, entries: cachedEntries as DirectoryEntry[] };
+                }
+            }
+
+            // 缓存未命中，直接从磁盘读取
             const entries = await readdir(data.path, { withFileTypes: true });
 
             const directoryEntries: DirectoryEntry[] = await Promise.all(

@@ -929,5 +929,23 @@ export const zhHans: TranslationStructure = {
         friendRequestGeneric: '新的好友请求',
         friendAccepted: ({ name }: { name: string }) => `您现在与 ${name} 成为了好友`,
         friendAcceptedGeneric: '好友请求已接受',
-    }
+    },
+
+    // 远程文件系统功能
+    remoteFs: {
+        title: '远程文件',
+        files: '文件',
+        search: '搜索',
+        searchPlaceholder: '搜索文件...',
+        searching: '搜索中...',
+        noResults: '未找到文件',
+        loading: '加载中...',
+        fileSaved: '文件保存成功',
+        binaryFile: '无法预览二进制文件',
+        emptyFile: '文件为空',
+        discardTitle: '放弃更改？',
+        discardMessage: '您有未保存的更改。确定要放弃吗？',
+        unsavedTitle: '未保存的更改',
+        unsavedMessage: '您有未保存的更改。确定要关闭吗？',
+    },
 } as const;

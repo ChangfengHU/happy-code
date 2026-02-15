@@ -40,20 +40,20 @@ export const lightTheme = {
 
         text: '#000000',
         textDestructive: Platform.select({ ios: '#FF3B30', default: '#F44336' }),
-        textSecondary: Platform.select({ ios: '#8E8E93', default: '#49454F' }),
+        textSecondary: Platform.select({ ios: '#8E8E93', web: '#3F4755', default: '#49454F' }),
         textLink: '#2BACCC',
         deleteAction: '#FF6B6B', // Delete/remove button color
         warningCritical: '#FF3B30',
         warning: '#8E8E93',
         success: '#34C759',
-        surface: '#ffffff',
+        surface: Platform.select({ web: '#F7F9FC', default: '#ffffff' }),
         surfaceRipple: 'rgba(0, 0, 0, 0.08)',
-        surfacePressed: '#f0f0f2',
+        surfacePressed: Platform.select({ web: '#E9EEF6', default: '#f0f0f2' }),
         surfaceSelected: Platform.select({ ios: '#C6C6C8', default: '#eaeaea' }),
         surfacePressedOverlay: Platform.select({ ios: '#D1D1D6', default: 'transparent' }),
-        surfaceHigh: '#F8F8F8',
-        surfaceHighest: '#f0f0f0',
-        divider: Platform.select({ ios: '#eaeaea', default: '#eaeaea' }),
+        surfaceHigh: Platform.select({ web: '#EDF2F8', default: '#F8F8F8' }),
+        surfaceHighest: Platform.select({ web: '#E4EBF5', default: '#f0f0f0' }),
+        divider: Platform.select({ ios: '#eaeaea', web: '#D4DDE9', default: '#eaeaea' }),
         shadow: {
             color: Platform.select({ default: '#000000', web: 'rgba(0, 0, 0, 0.1)' }),
             opacity: 0.1,
@@ -64,12 +64,12 @@ export const lightTheme = {
         //
 
         groupped: {
-            background: Platform.select({ ios: '#F2F2F7', default: '#F5F5F5' }),
+            background: Platform.select({ ios: '#F2F2F7', web: '#E9EFF8', default: '#F5F5F5' }),
             chevron: Platform.select({ ios: '#C7C7CC', default: '#49454F' }),
             sectionTitle: Platform.select({ ios: '#8E8E93', default: '#49454F' }),
         },
         header: {
-            background: '#ffffff',
+            background: Platform.select({ web: '#F2F6FC', default: '#ffffff' }),
             tint: '#18171C'
         },
         switch: {
@@ -106,7 +106,7 @@ export const lightTheme = {
             }
         },
         input: {
-            background: '#F5F5F5',
+            background: Platform.select({ web: '#E8EEF6', default: '#F5F5F5' }),
             text: '#000000',
             placeholder: '#999999',
         },
@@ -199,10 +199,10 @@ export const lightTheme = {
         },
 
         // Message View colors
-        userMessageBackground: '#f0eee6',
+        userMessageBackground: Platform.select({ web: '#E6EDF8', default: '#f0eee6' }),
         userMessageText: '#000000',
         agentMessageText: '#000000',
-        agentEventText: '#666666',
+        agentEventText: Platform.select({ web: '#4B5563', default: '#666666' }),
 
         // Code/Syntax colors
         syntaxKeyword: '#1d4ed8',

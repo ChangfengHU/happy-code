@@ -5,6 +5,8 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
+import { RemoteFileSystemPanel } from '@/components/RemoteFileSystemPanel';
+import { FileEditor } from '@/components/FileEditor';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
@@ -26,7 +28,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Dimensions, PanResponder, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -133,7 +135,13 @@ export const SessionView = React.memo((props: { id: string; switchPath?: string 
             )}
 
             {/* Content based on state */}
-            <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight + (!isTablet && realtimeStatus !== 'disconnected' ? 48 : 0) : 0 }}>
+            <View style={{
+                flex: 1,
+                backgroundColor: theme.colors.groupped.background,
+                paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web')
+                    ? safeArea.top + headerHeight + (!isTablet && realtimeStatus !== 'disconnected' ? 48 : 0)
+                    : 0
+            }}>
                 {!isDataReady ? (
                     // Loading state
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -162,6 +170,7 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
+    const isTablet = useIsTablet();
     const [message, setMessage] = React.useState('');
     const [isSwitchingPath, setIsSwitchingPath] = React.useState(false);
     const realtimeStatus = useRealtimeStatus();
@@ -185,6 +194,12 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
     const lastHandledSwitchPathRef = React.useRef<string | null>(null);
+
+    // 远程文件系统面板状态
+    const [isFilePanelExpanded, setIsFilePanelExpanded] = React.useState(false);
+    const [selectedFilePath, setSelectedFilePath] = React.useState<string | null>(null);
+    const [selectedFileName, setSelectedFileName] = React.useState<string>('');
+    const showFilePanel = isTablet || Platform.OS === 'web';
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -435,7 +450,7 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
 
 
     return (
-        <>
+        <View style={{ flex: 1, flexDirection: 'row', backgroundColor: theme.colors.groupped.background }}>
             {/* CLI Version Warning Overlay - Subtle centered pill */}
             {shouldShowCliWarning && !(isLandscape && deviceType === 'phone') && (
                 <Pressable
@@ -471,7 +486,12 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
             )}
 
             {/* Main content area - no padding since header is overlay */}
-            <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 32 : 0) }}>
+            <View style={{
+                flexBasis: 0,
+                flexGrow: 1,
+                backgroundColor: theme.colors.groupped.background,
+                paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 32 : 0)
+            }}>
                 <AgentContentView
                     content={content}
                     input={input}
@@ -516,6 +536,122 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
                     </Pressable>
                 )
             }
-        </>
+
+            {/* 远程文件系统面板 - 仅在平板/Web端显示 */}
+            {showFilePanel && (
+                <>
+                    <RemoteFileSystemPanel
+                        sessionId={sessionId}
+                        workDir={session.metadata?.path || '.'}
+                        isExpanded={isFilePanelExpanded}
+                        onExpandedChange={setIsFilePanelExpanded}
+                        onFileSelect={(path, node) => {
+                            setSelectedFilePath(path);
+                            setSelectedFileName(node.name);
+                        }}
+                        panelWidth={280}
+                    />
+
+                    {/* 文件编辑器 - 当选择了文件时显示，可拖拽调整宽度 */}
+                    {selectedFilePath && (
+                        <ResizableFileEditorPanel
+                            sessionId={sessionId}
+                            filePath={selectedFilePath}
+                            fileName={selectedFileName}
+                            onClose={() => {
+                                setSelectedFilePath(null);
+                                setSelectedFileName('');
+                            }}
+                        />
+                    )}
+                </>
+            )}
+        </View>
     )
+}
+
+/**
+ * ResizableFileEditorPanel - 可拖拽调整宽度的文件编辑器面板
+ * 左侧边缘可拖拽，和文件夹面板的拖拽体验一致
+ */
+function ResizableFileEditorPanel({
+    sessionId,
+    filePath,
+    fileName,
+    onClose,
+}: {
+    sessionId: string;
+    filePath: string;
+    fileName: string;
+    onClose: () => void;
+}) {
+    const { theme } = useUnistyles();
+    const DEFAULT_WIDTH = 480;
+    const MIN_WIDTH = 280;
+
+    const screenWidth = Dimensions.get('window').width;
+    const maxWidth = screenWidth * 0.6;
+
+    // 宽度状态
+    const [currentWidth, setCurrentWidth] = React.useState(DEFAULT_WIDTH);
+    const widthRef = React.useRef(DEFAULT_WIDTH);
+    const animatedWidth = React.useRef(new Animated.Value(DEFAULT_WIDTH)).current;
+    const dragStartWidthRef = React.useRef(0);
+
+    const panResponder = React.useMemo(
+        () => PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: (_, gestureState) => {
+                // 只有水平移动 > 3px 才开始拖拽
+                return Math.abs(gestureState.dx) > 3;
+            },
+            onPanResponderGrant: () => {
+                dragStartWidthRef.current = widthRef.current;
+            },
+            onPanResponderMove: (_, gestureState) => {
+                // 文件编辑器在右侧，向左拖动 (dx < 0) 增加宽度
+                const newWidth = Math.max(MIN_WIDTH, Math.min(maxWidth, dragStartWidthRef.current - gestureState.dx));
+                animatedWidth.setValue(newWidth);
+                widthRef.current = newWidth;
+            },
+            onPanResponderRelease: () => {
+                const finalWidth = widthRef.current;
+                setCurrentWidth(finalWidth);
+            },
+        }),
+        [maxWidth, animatedWidth]
+    );
+
+    return (
+        <Animated.View
+            style={{
+                width: animatedWidth,
+                height: '100%',
+                borderLeftWidth: 1,
+                borderLeftColor: theme.colors.divider,
+                overflow: 'hidden',
+            }}
+        >
+            {/* 左侧拖拽调整宽度的手柄 */}
+            <View
+                {...panResponder.panHandlers}
+                style={{
+                    position: 'absolute',
+                    left: -4,
+                    top: 0,
+                    bottom: 0,
+                    width: 12,
+                    zIndex: 100,
+                    cursor: 'col-resize' as any,
+                }}
+            />
+
+            <FileEditor
+                sessionId={sessionId}
+                filePath={filePath}
+                fileName={fileName}
+                onClose={onClose}
+            />
+        </Animated.View>
+    );
 }

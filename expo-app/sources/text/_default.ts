@@ -914,7 +914,25 @@ export const en = {
             confirm: 'Delete',
             cancel: 'Cancel',
         },
-    }
+    },
+
+    // 远程文件系统功能
+    remoteFs: {
+        title: 'Remote Files',
+        files: 'Files',
+        search: 'Search',
+        searchPlaceholder: 'Search files...',
+        searching: 'Searching...',
+        noResults: 'No files found',
+        loading: 'Loading...',
+        fileSaved: 'File saved successfully',
+        binaryFile: 'Cannot preview binary file',
+        emptyFile: 'File is empty',
+        discardTitle: 'Discard Changes?',
+        discardMessage: 'You have unsaved changes. Are you sure you want to discard them?',
+        unsavedTitle: 'Unsaved Changes',
+        unsavedMessage: 'You have unsaved changes. Are you sure you want to close?',
+    },
 } as const;
 
 export type Translations = typeof en;

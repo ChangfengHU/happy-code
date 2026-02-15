@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
+import { DirectoryCache } from '../modules/common/DirectoryCache';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -34,7 +35,7 @@ export type ACPMessageData =
     // Permissions
     | { type: 'permission-request'; permissionId: string; toolName: string; description: string; options?: unknown }
     // Usage/metrics
-    | { type: 'token_count'; [key: string]: unknown };
+    | { type: 'token_count';[key: string]: unknown };
 
 export type ACPProvider = 'gemini' | 'codex' | 'claude' | 'opencode';
 
@@ -53,6 +54,7 @@ export class ApiSessionClient extends EventEmitter {
     private metadataLock = new AsyncLock();
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
+    private directoryCache?: DirectoryCache;
 
     constructor(token: string, session: Session) {
         super()
@@ -72,7 +74,25 @@ export class ApiSessionClient extends EventEmitter {
             encryptionVariant: this.encryptionVariant,
             logger: (msg, data) => logger.debug(msg, data)
         });
-        registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);
+
+        // Initialize Directory Cache
+        if (this.metadata?.path) {
+            try {
+                this.directoryCache = new DirectoryCache({
+                    workingDirectory: this.metadata.path,
+                    warmupDepth: 2, // Pre-load top 2 levels
+                    ttl: 60000 // 1 minute memory cache (auto-invalidated by watchers)
+                });
+                // Start warmup asynchronously
+                this.directoryCache.warmup().catch(err =>
+                    logger.debug('[DirectoryCache] Warmup failed:', err)
+                );
+            } catch (error) {
+                logger.debug('[DirectoryCache] Failed to initialize:', error);
+            }
+        }
+
+        registerCommonHandlers(this.rpcHandlerManager, this.metadata.path, this.directoryCache);
 
         //
         // Create socket
@@ -148,7 +168,7 @@ export class ApiSessionClient extends EventEmitter {
                     }
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
-                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant,decodeBase64(data.body.metadata.value));
+                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
                         this.metadataVersion = data.body.metadata.version;
                     }
                     if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
@@ -266,13 +286,13 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
-        
+
         // Check if socket is connected before sending
         if (!this.socket.connected) {
             logger.debug('[API] Socket not connected, cannot send message. Message will be lost:', { type: body.type });
             // TODO: Consider implementing message queue or HTTP fallback for reliability
         }
-        
+
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted
@@ -298,9 +318,9 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         };
-        
+
         logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: body.type, hasMessage: 'message' in body });
-        
+
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.socket.emit('message', {
             sid: this.sessionId,
@@ -457,5 +477,6 @@ export class ApiSessionClient extends EventEmitter {
     async close() {
         logger.debug('[API] socket.close() called');
         this.socket.close();
+        this.directoryCache?.close();
     }
 }

@@ -16,12 +16,71 @@ interface ToolFullViewProps {
     messages?: Message[];
 }
 
+const extensionLanguageMap: Record<string, string> = {
+    js: 'javascript',
+    jsx: 'javascript',
+    ts: 'typescript',
+    tsx: 'typescript',
+    py: 'python',
+    java: 'java',
+    html: 'html',
+    htm: 'html',
+    css: 'css',
+    json: 'json',
+    md: 'markdown',
+    xml: 'xml',
+    yml: 'yaml',
+    yaml: 'yaml',
+    sh: 'bash',
+    bash: 'bash',
+    zsh: 'bash',
+    sql: 'sql',
+    go: 'go',
+    rs: 'rust',
+    rust: 'rust',
+    c: 'c',
+    cc: 'cpp',
+    cpp: 'cpp',
+    cxx: 'cpp',
+    php: 'php',
+    rb: 'ruby',
+    swift: 'swift',
+    kt: 'kotlin',
+};
+
+function getLanguageFromPath(filePath?: string): string | undefined {
+    if (!filePath) return undefined;
+    const ext = filePath.split('.').pop()?.toLowerCase();
+    if (!ext) return undefined;
+    return extensionLanguageMap[ext];
+}
+
 export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProps) {
     // Check if there's a specialized content view for this tool
     const SpecializedFullView = getToolFullViewComponent(tool.name);
     const screenWidth = useWindowDimensions().width;
     const devModeEnabled = (useLocalSetting('devModeEnabled') || __DEV__);
     console.log('ToolFullView', devModeEnabled);
+    const inputLanguage = tool.input ? 'json' : undefined;
+    const outputCode = typeof tool.result === 'string' ? tool.result : (tool.result ? JSON.stringify(tool.result, null, 2) : '');
+    const outputLanguage = React.useMemo(() => {
+        if (!tool.result) return undefined;
+        if (typeof tool.result !== 'string') return 'json';
+
+        if (tool.name === 'Read' || tool.name === 'read') {
+            const filePath = typeof tool.input?.file_path === 'string'
+                ? tool.input.file_path
+                : tool.input?.locations?.[0]?.path;
+            return getLanguageFromPath(filePath);
+        }
+
+        if (tool.name === 'CodexBash' && Array.isArray(tool.input?.parsed_cmd) && tool.input.parsed_cmd[0]?.type === 'read') {
+            const filePath = tool.input.parsed_cmd[0]?.name;
+            return getLanguageFromPath(typeof filePath === 'string' ? filePath : undefined);
+        }
+
+        return undefined;
+    }, [tool.input, tool.name, tool.result]);
 
     return (
         <ScrollView style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
@@ -49,7 +108,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                                 <Ionicons name="log-in" size={20} color="#5856D6" />
                                 <Text style={styles.sectionTitle}>{t('tools.fullView.inputParams')}</Text>
                             </View>
-                            <CodeView code={JSON.stringify(tool.input, null, 2)} />
+                            <CodeView code={JSON.stringify(tool.input, null, 2)} language={inputLanguage} />
                         </View>
                     )}
 
@@ -60,9 +119,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                                 <Ionicons name="log-out" size={20} color="#34C759" />
                                 <Text style={styles.sectionTitle}>{t('tools.fullView.output')}</Text>
                             </View>
-                            <CodeView
-                                code={typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
-                            />
+                            <CodeView code={outputCode} language={outputLanguage} />
                         </View>
                     )}
 
@@ -112,7 +169,8 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                                 completedAt: tool.completedAt,
                                 permission: tool.permission,
                                 messages
-                            }, null, 2)} 
+                            }, null, 2)}
+                            language="json"
                         />
                     </View>
                 )}
