@@ -186,9 +186,11 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
     // Get permission mode from session object, default to 'default'
     const permissionMode = session.permissionMode || 'default';
-    // Get model mode from session object - for Gemini sessions use explicit model, default to gemini-2.5-pro
+    const isCodexSession = session.metadata?.flavor === 'codex';
+    // Get model mode from session object - for Gemini sessions use explicit model, default to gemini-3-pro
     const isGeminiSession = session.metadata?.flavor === 'gemini';
-    const modelMode = session.modelMode || (isGeminiSession ? 'gemini-2.5-pro' : 'default');
+    const modelMode = session.modelMode || (isGeminiSession ? 'gemini-3-pro' : 'default');
+    const codexReasoningEffort = session.codexReasoningEffort || 'medium';
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
@@ -221,9 +223,12 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
         storage.getState().updateSessionPermissionMode(sessionId, mode);
     }, [sessionId]);
 
-    // Function to update model mode (for Gemini sessions)
-    const updateModelMode = React.useCallback((mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => {
+    // Function to update model mode (for Gemini/Codex sessions)
+    const updateModelMode = React.useCallback((mode: 'default' | 'gemini-3-pro' | 'gemini-3-flash' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'gpt-5.3-codex' | 'gpt-5.2-codex' | 'gpt-5.2' | 'gpt-5.1-codex-max' | 'gpt-5.1-codex-mini') => {
         storage.getState().updateSessionModelMode(sessionId, mode);
+    }, [sessionId]);
+    const updateCodexReasoningEffort = React.useCallback((effort: 'low' | 'medium' | 'high' | 'xhigh') => {
+        storage.getState().updateSessionCodexReasoningEffort(sessionId, effort);
     }, [sessionId]);
 
     const handleSwitchPath = React.useCallback(async (pathToUse: string) => {
@@ -249,7 +254,9 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
                 machineId,
                 directory: trimmedPath,
                 approvedNewDirectoryCreation,
-                agent: resolveAgentType(session.metadata?.flavor)
+                agent: resolveAgentType(session.metadata?.flavor),
+                model: session.modelMode && session.modelMode !== 'default' ? session.modelMode : undefined,
+                reasoningEffort: isCodexSession ? codexReasoningEffort : undefined
             });
 
             if (result.type === 'success') {
@@ -282,13 +289,16 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
                     { machineId, path: trimmedPath },
                     ...recentMachinePaths.filter(entry => entry.machineId !== machineId)
                 ].slice(0, 10);
-                storage.getState().applyLocalSettings({ recentMachinePaths: updatedPaths });
+                sync.applySettings({ recentMachinePaths: updatedPaths });
 
                 if (session.permissionMode) {
                     storage.getState().updateSessionPermissionMode(newSessionId, session.permissionMode);
                 }
                 if (session.modelMode) {
                     storage.getState().updateSessionModelMode(newSessionId, session.modelMode);
+                }
+                if (session.codexReasoningEffort) {
+                    storage.getState().updateSessionCodexReasoningEffort(newSessionId, session.codexReasoningEffort);
                 }
 
                 router.replace(`/session/${newSessionId}`);
@@ -299,7 +309,7 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
         } finally {
             setIsSwitchingPath(false);
         }
-    }, [recentMachinePaths, router, session.metadata?.flavor, session.metadata?.machineId, session.metadata?.path, session.modelMode, session.permissionMode]);
+    }, [recentMachinePaths, router, session.codexReasoningEffort, session.metadata?.flavor, session.metadata?.machineId, session.metadata?.path, session.modelMode, session.permissionMode]);
 
     React.useEffect(() => {
         const trimmedPath = typeof switchPath === 'string' ? switchPath.trim() : '';
@@ -404,6 +414,8 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
             onPermissionModeChange={updatePermissionMode}
             modelMode={modelMode as any}
             onModelModeChange={updateModelMode as any}
+            reasoningEffort={isCodexSession ? codexReasoningEffort : undefined}
+            onReasoningEffortChange={isCodexSession ? updateCodexReasoningEffort : undefined}
             metadata={session.metadata}
             connectionStatus={{
                 text: sessionStatus.statusText,

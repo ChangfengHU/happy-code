@@ -226,10 +226,11 @@ class Sync {
         // Read permission mode from session state
         const permissionMode = session.permissionMode || 'default';
 
-        // Read model mode - for Gemini, default to gemini-2.5-pro if not set
+        // Read model mode - for Gemini, default to gemini-3-pro if not set
         const flavor = session.metadata?.flavor;
         const isGemini = flavor === 'gemini';
-        const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
+        const isCodex = flavor === 'codex';
+        const modelMode = session.modelMode || (isGemini ? 'gemini-3-pro' : 'default');
 
         // Generate local ID
         const localId = randomUUID();
@@ -256,6 +257,9 @@ class Sync {
         if (modelMode !== 'default') {
             model = modelMode;
         }
+        const reasoningEffort: 'low' | 'medium' | 'high' | 'xhigh' | null = isCodex
+            ? (session.codexReasoningEffort || 'medium')
+            : null;
         const fallbackModel: string | null = null;
 
         // Create user message content with metadata
@@ -269,6 +273,7 @@ class Sync {
                 sentFrom,
                 permissionMode: permissionMode || 'default',
                 model,
+                ...(isCodex ? { reasoningEffort } : {}),
                 fallbackModel,
                 appendSystemPrompt: systemPrompt,
                 ...(displayText && { displayText }) // Add displayText if provided

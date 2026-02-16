@@ -301,6 +301,9 @@ export async function startDaemon(): Promise<void> {
             authEnv.CODEX_MODEL = options.model;
           }
         }
+        if (options.agent === 'codex' && options.reasoningEffort) {
+          authEnv.CODEX_MODEL_REASONING_EFFORT = options.reasoningEffort;
+        }
 
         // Layer 2: Profile environment variables
         // Priority: GUI-provided profile > CLI local active profile > none

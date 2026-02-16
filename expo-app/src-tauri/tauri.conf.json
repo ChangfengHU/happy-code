@@ -5,7 +5,7 @@
   "identifier": "com.slopus.happy",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:8081",
+    "devUrl": "http://localhost:8754",
     "beforeDevCommand": "yarn start",
     "beforeBuildCommand": "yarn expo export --platform web --output-dir dist"
   },

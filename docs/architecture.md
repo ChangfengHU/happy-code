@@ -39,7 +39,7 @@ happy-dev/
 | 属性 | 值 |
 |------|-----|
 | 目录 | `expo-app/` |
-| 端口 | `8081` |
+| 端口 | `8754` |
 | 公网地址 | `https://web.vyibc.com` |
 | 启动方式 | `npx expo start --web` |
 

@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
-import { PermissionMode, ModelMode } from './PermissionModeSelector';
+import { PermissionMode, ModelMode, CodexReasoningEffort } from './PermissionModeSelector';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
@@ -37,6 +37,8 @@ interface AgentInputProps {
     onPermissionModeChange?: (mode: PermissionMode) => void;
     modelMode?: ModelMode;
     onModelModeChange?: (mode: ModelMode) => void;
+    reasoningEffort?: CodexReasoningEffort;
+    onReasoningEffortChange?: (effort: CodexReasoningEffort) => void;
     metadata?: Metadata | null;
     onAbort?: () => void | Promise<void>;
     showAbortButton?: boolean;
@@ -320,6 +322,37 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const contextWarning = props.usageData?.contextSize
         ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
         : null;
+
+    const modelModeLabel = React.useMemo(() => {
+        if (!props.modelMode) return null;
+        const m = props.modelMode;
+
+        if (isGemini) {
+            if (m === 'gemini-3-pro') return 'Gemini 3 Pro';
+            if (m === 'gemini-3-flash') return 'Gemini 3 Flash';
+            if (m === 'gemini-2.5-pro') return 'Gemini 2.5 Pro';
+            if (m === 'gemini-2.5-flash') return 'Gemini 2.5 Flash';
+            if (m === 'gemini-2.5-flash-lite') return 'Gemini 2.5 Flash Lite';
+            if (m === 'default') return 'Gemini (Default)';
+            return m;
+        }
+
+        if (isCodex) {
+            const effortLabel = props.reasoningEffort || 'medium';
+            if (m === 'gpt-5.3-codex') return `gpt-5.3-codex (${effortLabel})`;
+            if (m === 'gpt-5.2-codex') return `gpt-5.2-codex (${effortLabel})`;
+            if (m === 'gpt-5.2') return `gpt-5.2 (${effortLabel})`;
+            if (m === 'gpt-5.1-codex-max') return `gpt-5.1-codex-max (${effortLabel})`;
+            if (m === 'gpt-5.1-codex-mini') return `gpt-5.1-codex-mini (${effortLabel})`;
+            if (m === 'default') return `Codex (${effortLabel})`;
+            return `${m} (${effortLabel})`;
+        }
+
+        if (m === 'claude-3-opus-20240229') return 'Opus';
+        if (m === 'claude-3-5-haiku-20241022') return 'Haiku';
+        if (m === 'default') return 'Claude (Default)';
+        return m;
+    }, [props.modelMode, props.reasoningEffort, isGemini, isCodex]);
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
@@ -623,8 +656,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     </Text>
                                     {isGemini ? (
                                         // Gemini model selector
-                                        (['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const).map((model) => {
+                                        (['gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const).map((model) => {
                                             const modelConfig = {
+                                                'gemini-3-pro': { label: 'Gemini 3 Pro', description: 'Newest high-capability Gemini model' },
+                                                'gemini-3-flash': { label: 'Gemini 3 Flash', description: 'Newest fast/efficient Gemini model' },
                                                 'gemini-2.5-pro': { label: 'Gemini 2.5 Pro', description: '性能最强' },
                                                 'gemini-2.5-flash': { label: 'Gemini 2.5 Flash', description: '快速高效' },
                                                 'gemini-2.5-flash-lite': { label: 'Gemini 2.5 Flash Lite', description: '极速响应' },
@@ -686,73 +721,154 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             );
                                         })
                                     ) : isCodex ? (
-                                        // Codex model selector
-                                        (['gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'] as const).map((model) => {
-                                            const modelConfig = {
-                                                'gpt-5.2-codex': { label: 'gpt-5.2-codex (current)', description: 'Latest frontier agentic coding model' },
-                                                'gpt-5.2': { label: 'gpt-5.2', description: 'Latest frontier model with improvements' },
-                                                'gpt-5.1-codex-max': { label: 'gpt-5.1-codex-max', description: 'Flagship for deep and fast reasoning' },
-                                                'gpt-5.1-codex-mini': { label: 'gpt-5.1-codex-mini', description: 'Cheaper, faster, less capable' },
-                                            };
-                                            const config = modelConfig[model];
-                                            // Handle 'default' mode mapping to the first option
-                                            const isSelected = props.modelMode === model || (props.modelMode === 'default' && model === 'gpt-5.2-codex');
+                                        <>
+                                            {(['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'] as const).map((model) => {
+                                                const modelConfig = {
+                                                    'gpt-5.3-codex': { label: 'gpt-5.3-codex (current)', description: 'Latest frontier agentic coding model' },
+                                                    'gpt-5.2-codex': { label: 'gpt-5.2-codex', description: 'Frontier agentic coding model' },
+                                                    'gpt-5.2': { label: 'gpt-5.2', description: 'Latest frontier model with improvements' },
+                                                    'gpt-5.1-codex-max': { label: 'gpt-5.1-codex-max', description: 'Flagship for deep and fast reasoning' },
+                                                    'gpt-5.1-codex-mini': { label: 'gpt-5.1-codex-mini', description: 'Cheaper, faster, less capable' },
+                                                };
+                                                const config = modelConfig[model];
+                                                const isSelected = props.modelMode === model || (props.modelMode === 'default' && model === 'gpt-5.3-codex');
 
-                                            return (
-                                                <Pressable
-                                                    key={model}
-                                                    onPress={() => {
-                                                        hapticsLight();
-                                                        // If selecting the default-equivalent model, we can set 'default' or the specific name.
-                                                        // Setting specific name is safer for explicit CLI usage.
-                                                        props.onModelModeChange?.(model);
-                                                    }}
-                                                    style={({ pressed }) => ({
-                                                        flexDirection: 'row',
-                                                        alignItems: 'center',
-                                                        paddingHorizontal: 16,
-                                                        paddingVertical: 8,
-                                                        backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
-                                                    })}
-                                                >
-                                                    <View style={{
-                                                        width: 16,
-                                                        height: 16,
-                                                        borderRadius: 8,
-                                                        borderWidth: 2,
-                                                        borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        marginRight: 12
-                                                    }}>
-                                                        {isSelected && (
-                                                            <View style={{
-                                                                width: 6,
-                                                                height: 6,
-                                                                borderRadius: 3,
-                                                                backgroundColor: theme.colors.radio.dot
-                                                            }} />
-                                                        )}
-                                                    </View>
-                                                    <View style={{ flex: 1 }}>
-                                                        <Text style={{
-                                                            fontSize: 14,
-                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                            ...Typography.default()
+                                                return (
+                                                    <Pressable
+                                                        key={model}
+                                                        onPress={() => {
+                                                            hapticsLight();
+                                                            props.onModelModeChange?.(model);
+                                                        }}
+                                                        style={({ pressed }) => ({
+                                                            flexDirection: 'row',
+                                                            alignItems: 'center',
+                                                            paddingHorizontal: 16,
+                                                            paddingVertical: 8,
+                                                            backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                        })}
+                                                    >
+                                                        <View style={{
+                                                            width: 16,
+                                                            height: 16,
+                                                            borderRadius: 8,
+                                                            borderWidth: 2,
+                                                            borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            marginRight: 12
                                                         }}>
-                                                            {config.label}
-                                                        </Text>
-                                                        <Text style={{
-                                                            fontSize: 11,
-                                                            color: theme.colors.textSecondary,
-                                                            ...Typography.default()
-                                                        }} numberOfLines={1}>
-                                                            {config.description}
-                                                        </Text>
-                                                    </View>
-                                                </Pressable>
-                                            );
-                                        })
+                                                            {isSelected && (
+                                                                <View style={{
+                                                                    width: 6,
+                                                                    height: 6,
+                                                                    borderRadius: 3,
+                                                                    backgroundColor: theme.colors.radio.dot
+                                                                }} />
+                                                            )}
+                                                        </View>
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={{
+                                                                fontSize: 14,
+                                                                color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                                ...Typography.default()
+                                                            }}>
+                                                                {config.label}
+                                                            </Text>
+                                                            <Text style={{
+                                                                fontSize: 11,
+                                                                color: theme.colors.textSecondary,
+                                                                ...Typography.default()
+                                                            }} numberOfLines={1}>
+                                                                {config.description}
+                                                            </Text>
+                                                        </View>
+                                                    </Pressable>
+                                                );
+                                            })}
+
+                                            <View style={{
+                                                height: 1,
+                                                backgroundColor: theme.colors.divider,
+                                                marginHorizontal: 16,
+                                                marginVertical: 6
+                                            }} />
+
+                                            <Text style={{
+                                                fontSize: 12,
+                                                fontWeight: '600',
+                                                color: theme.colors.textSecondary,
+                                                paddingHorizontal: 16,
+                                                paddingBottom: 4,
+                                                ...Typography.default('semiBold')
+                                            }}>
+                                                Reasoning level
+                                            </Text>
+
+                                            {(['low', 'medium', 'high', 'xhigh'] as const).map((effort) => {
+                                                const effortConfig = {
+                                                    low: { label: 'Low', description: 'Fast responses with lighter reasoning' },
+                                                    medium: { label: 'Medium (default)', description: 'Balanced speed and reasoning depth' },
+                                                    high: { label: 'High', description: 'Greater reasoning depth for complex tasks' },
+                                                    xhigh: { label: 'Extra high', description: 'Maximum depth for hardest tasks' },
+                                                };
+                                                const config = effortConfig[effort];
+                                                const isSelected = (props.reasoningEffort || 'medium') === effort;
+
+                                                return (
+                                                    <Pressable
+                                                        key={effort}
+                                                        onPress={() => {
+                                                            hapticsLight();
+                                                            props.onReasoningEffortChange?.(effort);
+                                                        }}
+                                                        style={({ pressed }) => ({
+                                                            flexDirection: 'row',
+                                                            alignItems: 'center',
+                                                            paddingHorizontal: 16,
+                                                            paddingVertical: 8,
+                                                            backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                        })}
+                                                    >
+                                                        <View style={{
+                                                            width: 16,
+                                                            height: 16,
+                                                            borderRadius: 8,
+                                                            borderWidth: 2,
+                                                            borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            marginRight: 12
+                                                        }}>
+                                                            {isSelected && (
+                                                                <View style={{
+                                                                    width: 6,
+                                                                    height: 6,
+                                                                    borderRadius: 3,
+                                                                    backgroundColor: theme.colors.radio.dot
+                                                                }} />
+                                                            )}
+                                                        </View>
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={{
+                                                                fontSize: 14,
+                                                                color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                                ...Typography.default()
+                                                            }}>
+                                                                {config.label}
+                                                            </Text>
+                                                            <Text style={{
+                                                                fontSize: 11,
+                                                                color: theme.colors.textSecondary,
+                                                                ...Typography.default()
+                                                            }} numberOfLines={1}>
+                                                                {config.description}
+                                                            </Text>
+                                                        </View>
+                                                    </Pressable>
+                                                );
+                                            })}
+                                        </>
                                     ) : (
                                         // Claude model selector (Default)
                                         (['default', 'claude-3-opus-20240229', 'claude-3-5-haiku-20241022'] as const).map((model) => {
@@ -852,6 +968,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             {props.connectionStatus.text}
                                         </Text>
                                     </View>
+                                    {modelModeLabel && (
+                                        <Text style={{
+                                            fontSize: 11,
+                                            color: theme.colors.textSecondary,
+                                            ...Typography.default()
+                                        }}>
+                                            • {modelModeLabel}
+                                        </Text>
+                                    )}
                                     {/* CLI Status - only shown when provided (wizard only) */}
                                     {props.connectionStatus.cliStatus && (
                                         <>
@@ -937,37 +1062,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             alignItems: 'flex-end',
                             minWidth: 150, // Fixed minimum width to prevent layout shift
                         }}>
-                            {/* Model Mode Display */}
-                            {props.modelMode && (
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: theme.colors.textSecondary,
-                                    marginBottom: 2,
-                                    ...Typography.default()
-                                }}>
-                                    {(() => {
-                                        const m = props.modelMode;
-                                        if (isGemini) {
-                                            if (m === 'gemini-2.5-pro') return 'Gemini 2.5 Pro';
-                                            if (m === 'gemini-2.5-flash') return 'Gemini 2.5 Flash';
-                                            if (m === 'gemini-2.5-flash-lite') return 'Gemini 2.5 Flash Lite';
-                                            if (m === 'default') return 'Gemini (Default)';
-                                        } else if (isCodex) {
-                                            if (m === 'gpt-5.2-codex') return 'gpt-5.2-codex';
-                                            if (m === 'gpt-5.2') return 'gpt-5.2';
-                                            if (m === 'gpt-5.1-codex-max') return 'gpt-5.1-codex-max';
-                                            if (m === 'gpt-5.1-codex-mini') return 'gpt-5.1-codex-mini';
-                                            if (m === 'default') return 'Codex (Default)';
-                                        } else {
-                                            if (m === 'claude-3-opus-20240229') return 'Opus';
-                                            if (m === 'claude-3-5-haiku-20241022') return 'Haiku';
-                                            if (m === 'default') return 'Claude (Default)';
-                                        }
-                                        return m;
-                                    })()}
-                                </Text>
-                            )}
-
                             {props.permissionMode && (
                                 <Text style={{
                                     fontSize: 11,

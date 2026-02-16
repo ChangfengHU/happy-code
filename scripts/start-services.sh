@@ -167,8 +167,9 @@ start_server() {
 }
 
 start_expo() {
-  log_info "准备启动 Expo Web (8081)..."
+  log_info "准备启动 Expo Web (8754)..."
   kill_port 8081
+  kill_port 8754
   mkdir -p "${LOG_DIR}"
   cd "${ROOT_DIR}/expo-app"
   if [[ ! -d node_modules ]]; then
@@ -180,7 +181,7 @@ start_expo() {
   if [[ "${CLEAR}" == "1" ]]; then
     clear_flag="--clear"
   fi
-  nohup sh -c "EXPO_PUBLIC_HAPPY_SERVER_URL=\"${SERVER_PUBLIC_URL}\" npx expo start --web ${clear_flag}" \
+  nohup sh -c "EXPO_PUBLIC_HAPPY_SERVER_URL=\"${SERVER_PUBLIC_URL}\" npx expo start --web --port 8754 --host lan ${clear_flag}" \
     > "${LOG_DIR}/expo-web.log" 2>&1 &
   log_success "Expo Web 启动中，日志: ${LOG_DIR}/expo-web.log"
 }
@@ -223,17 +224,17 @@ show_status() {
   else
     echo -e "  Server (3005):      ${RED}未运行${NC}"
   fi
-  if lsof -ti tcp:8081 >/dev/null 2>&1; then
-    echo -e "  Expo Web (8081):    ${GREEN}运行中${NC}"
+  if lsof -ti tcp:8754 >/dev/null 2>&1; then
+    echo -e "  Expo Web (8754):    ${GREEN}运行中${NC}"
   else
-    echo -e "  Expo Web (8081):    ${RED}未运行${NC}"
+    echo -e "  Expo Web (8754):    ${RED}未运行${NC}"
   fi
 }
 
 kill_all() {
   log_section "停止所有服务（不含 Daemon）"
   kill_port 3005
-  kill_port 8081
+  kill_port 8754
   docker stop "${PG_CONTAINER_NAME}" "${REDIS_CONTAINER_NAME}" "${MINIO_CONTAINER_NAME}" 2>/dev/null || true
   log_success "所有服务已停止"
 }

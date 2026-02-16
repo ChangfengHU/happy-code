@@ -69,9 +69,14 @@ export async function runCodex(opts: {
 }): Promise<void> {
     // Use shared PermissionMode type for cross-agent compatibility
     type PermissionMode = import('@/api/types').PermissionMode;
+    type CodexReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+    const isCodexReasoningEffort = (value: unknown): value is CodexReasoningEffort => {
+        return value === 'none' || value === 'minimal' || value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh';
+    };
     interface EnhancedMode {
         permissionMode: PermissionMode;
         model?: string;
+        reasoningEffort?: CodexReasoningEffort;
     }
 
     //
@@ -154,12 +159,19 @@ export async function runCodex(opts: {
     const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
         permissionMode: mode.permissionMode,
         model: mode.model,
+        reasoningEffort: mode.reasoningEffort,
     }));
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
     let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
+    let currentReasoningEffort: CodexReasoningEffort | undefined = undefined;
+    if (isCodexReasoningEffort(process.env.CODEX_MODEL_REASONING_EFFORT)) {
+        currentReasoningEffort = process.env.CODEX_MODEL_REASONING_EFFORT;
+    } else if (isCodexReasoningEffort(process.env.CODEX_REASONING_EFFORT)) {
+        currentReasoningEffort = process.env.CODEX_REASONING_EFFORT;
+    }
 
     session.onUserMessage((message) => {
         // Resolve permission mode (accept all modes, will be mapped in switch statement)
@@ -182,9 +194,28 @@ export async function runCodex(opts: {
             logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
         }
 
+        // Resolve reasoning effort. This is usually injected from daemon env on startup.
+        // If a future client sends an override in message meta, accept it when valid.
+        let messageReasoningEffort = currentReasoningEffort;
+        if (message.meta && Object.prototype.hasOwnProperty.call(message.meta, 'reasoningEffort')) {
+            const nextReasoningEffort = (message.meta as any).reasoningEffort;
+            if (isCodexReasoningEffort(nextReasoningEffort)) {
+                messageReasoningEffort = nextReasoningEffort;
+                currentReasoningEffort = nextReasoningEffort;
+                logger.debug(`[Codex] Reasoning effort updated from user message: ${nextReasoningEffort}`);
+            } else if (nextReasoningEffort === null) {
+                messageReasoningEffort = undefined;
+                currentReasoningEffort = undefined;
+                logger.debug('[Codex] Reasoning effort reset to default');
+            }
+        } else if (currentReasoningEffort) {
+            logger.debug(`[Codex] User message received with no reasoning override, using current: ${currentReasoningEffort}`);
+        }
+
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
             model: messageModel,
+            reasoningEffort: messageReasoningEffort,
         };
         messageQueue.push(message.content.text, enhancedMode);
     });
@@ -670,6 +701,9 @@ export async function runCodex(opts: {
                     };
                     if (message.mode.model) {
                         startConfig.model = message.mode.model;
+                    }
+                    if (message.mode.reasoningEffort) {
+                        (startConfig.config as any).model_reasoning_effort = message.mode.reasoningEffort;
                     }
 
                     // Check for resume file from multiple sources

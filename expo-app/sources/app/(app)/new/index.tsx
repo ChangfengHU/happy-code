@@ -20,7 +20,7 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
-import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
+import { PermissionMode, ModelMode, PermissionModeSelector, CodexReasoningEffort } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { AgentInput } from '@/components/AgentInput';
@@ -367,9 +367,9 @@ function NewSessionWizard() {
 
     const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
         const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'];
-        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high', 'gpt-4o', 'o1-preview', 'o1-mini'];
+        const validCodexModes: ModelMode[] = ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'];
         // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-        const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+        const validGeminiModes: ModelMode[] = ['gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
         if (lastUsedModelMode) {
             if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
@@ -380,8 +380,9 @@ function NewSessionWizard() {
                 return lastUsedModelMode as ModelMode;
             }
         }
-        return agentType === 'codex' ? 'gpt-5-codex-high' : agentType === 'gemini' ? 'gemini-2.5-pro' : 'default';
+        return agentType === 'codex' ? 'gpt-5.3-codex' : agentType === 'gemini' ? 'gemini-3-pro' : 'default';
     });
+    const [codexReasoningEffort, setCodexReasoningEffort] = React.useState<CodexReasoningEffort>('medium');
 
     // Session details state
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
@@ -739,9 +740,9 @@ function NewSessionWizard() {
     // Reset model mode when agent type changes to appropriate default
     React.useEffect(() => {
         const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'];
-        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high', 'gpt-4o', 'o1-preview', 'o1-mini'];
+        const validCodexModes: ModelMode[] = ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'];
         // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-        const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+        const validGeminiModes: ModelMode[] = ['gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
         let isValidForCurrentAgent = false;
         if (agentType === 'codex') {
@@ -755,9 +756,9 @@ function NewSessionWizard() {
         if (!isValidForCurrentAgent) {
             // Set appropriate default for each agent type
             if (agentType === 'codex') {
-                setModelMode('gpt-4o');
+                setModelMode('gpt-5.3-codex');
             } else if (agentType === 'gemini') {
-                setModelMode('gemini-2.5-pro');
+                setModelMode('gemini-3-pro');
             } else {
                 setModelMode('claude-3-5-sonnet-20241022');
             }
@@ -1077,7 +1078,8 @@ function NewSessionWizard() {
                 approvedNewDirectoryCreation: true,
                 agent: agentType,
                 environmentVariables,
-                model: (modelMode && modelMode !== 'default') ? modelMode : undefined
+                model: (modelMode && modelMode !== 'default') ? modelMode : undefined,
+                reasoningEffort: agentType === 'codex' ? codexReasoningEffort : undefined
             });
 
             if ('sessionId' in result && result.sessionId) {
@@ -1088,8 +1090,11 @@ function NewSessionWizard() {
 
                 // Set permission mode and model mode on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
-                if (agentType === 'gemini' && modelMode && modelMode !== 'default') {
-                    storage.getState().updateSessionModelMode(result.sessionId, modelMode as 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite');
+                if ((agentType === 'gemini' || agentType === 'codex') && modelMode && modelMode !== 'default') {
+                    storage.getState().updateSessionModelMode(result.sessionId, modelMode as any);
+                }
+                if (agentType === 'codex') {
+                    storage.getState().updateSessionCodexReasoningEffort(result.sessionId, codexReasoningEffort);
                 }
 
                 // Send initial message if provided
@@ -1118,7 +1123,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, codexReasoningEffort, recentMachinePaths, profileMap, router]);
 
     const screenWidth = useWindowDimensions().width;
 
@@ -1210,6 +1215,8 @@ function NewSessionWizard() {
                                 onPermissionModeChange={handlePermissionModeChange}
                                 modelMode={modelMode}
                                 onModelModeChange={setModelMode}
+                                reasoningEffort={codexReasoningEffort}
+                                onReasoningEffortChange={setCodexReasoningEffort}
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine ? (selectedMachine.metadata?.displayName || selectedMachine.metadata?.host) : null}
                                 onMachineClick={handleMachineClick}
@@ -1959,6 +1966,8 @@ function NewSessionWizard() {
                             onPermissionModeChange={handleAgentInputPermissionChange}
                             modelMode={modelMode}
                             onModelModeChange={setModelMode}
+                            reasoningEffort={codexReasoningEffort}
+                            onReasoningEffortChange={setCodexReasoningEffort}
                             connectionStatus={connectionStatus}
                             machineName={selectedMachine ? (selectedMachine.metadata?.displayName || selectedMachine.metadata?.host) : null}
                             onMachineClick={handleAgentInputMachineClick}

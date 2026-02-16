@@ -61,10 +61,10 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
 
         const nativeEvent = e.nativeEvent;
         const key = nativeEvent.key;
-        
+
         // Map native key names to our normalized format
         let normalizedKey: SupportedKey | null = null;
-        
+
         switch (key) {
             case 'Enter':
                 normalizedKey = 'Enter';
@@ -98,7 +98,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                 key: normalizedKey,
                 shiftKey: (nativeEvent as any).shiftKey || false
             };
-            
+
             const handled = onKeyPress(keyEvent);
             if (handled) {
                 e.preventDefault();
@@ -110,11 +110,11 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         // When text changes, assume cursor moves to end
         const selection = { start: text.length, end: text.length };
         selectionRef.current = selection;
-        
+
         console.log('📝 MultiTextInput.native: Text changed:', JSON.stringify({ text, selection }));
-        
+
         onChangeText(text);
-        
+
         if (onStateChange) {
             onStateChange({ text, selection });
         }
@@ -127,12 +127,12 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         if (e.nativeEvent.selection) {
             const { start, end } = e.nativeEvent.selection;
             const selection = { start, end };
-            
+
             // Only update if selection actually changed
             if (selection.start !== selectionRef.current.start || selection.end !== selectionRef.current.end) {
                 selectionRef.current = selection;
                 console.log('📍 MultiTextInput.native: Selection changed:', JSON.stringify(selection));
-                
+
                 if (onSelectionChange) {
                     onSelectionChange(selection);
                 }
@@ -147,17 +147,17 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     React.useImperativeHandle(ref, () => ({
         setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
             console.log('🎯 MultiTextInput.native: setTextAndSelection:', JSON.stringify({ text, selection }));
-            
+
             if (inputRef.current) {
                 // Use setNativeProps for direct manipulation
                 inputRef.current.setNativeProps({
                     text: text,
                     selection: selection
                 });
-                
+
                 // Update our ref
                 selectionRef.current = selection;
-                
+
                 // Notify through callbacks
                 onChangeText(text);
                 if (onStateChange) {
@@ -186,7 +186,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     maxHeight,
                     color: theme.colors.input.text,
                     textAlignVertical: 'top',
-                    padding:0,
+                    padding: 0,
                     paddingTop: props.paddingTop,
                     paddingBottom: props.paddingBottom,
                     paddingLeft: props.paddingLeft,

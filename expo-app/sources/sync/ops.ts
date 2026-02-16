@@ -139,6 +139,7 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean;
     token?: string;
     agent?: 'codex' | 'claude' | 'gemini';
+    reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
     // Environment variables from AI backend profile
     // Accepts any environment variables - daemon will pass them to the agent process
     // Common variables include:
@@ -160,7 +161,7 @@ export interface SpawnSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables, model } = options;
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, reasoningEffort, environmentVariables, model } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -169,12 +170,13 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             approvedNewDirectoryCreation?: boolean,
             token?: string,
             agent?: 'codex' | 'claude' | 'gemini',
+            reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
             environmentVariables?: Record<string, string>;
             model?: string;
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables, model }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, reasoningEffort, environmentVariables, model }
         );
         return result;
     } catch (error) {
@@ -232,6 +234,66 @@ export async function machineBash(
             stdout: '',
             stderr: error instanceof Error ? error.message : 'Unknown error',
             exitCode: -1
+        };
+    }
+}
+
+/**
+ * List directory contents on a specific machine
+ */
+export async function machineListDirectory(
+    machineId: string,
+    path: string
+): Promise<SessionListDirectoryResponse> {
+    const parseDirectoriesFromLs = (stdout: string): DirectoryEntry[] => {
+        const lines = stdout
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean);
+
+        return lines
+            .filter(line => line.endsWith('/'))
+            .map(line => line.slice(0, -1))
+            .filter(name => name !== '.' && name !== '..')
+            .map(name => ({
+                name,
+                type: 'directory' as const,
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    };
+
+    const shellEscape = (value: string): string => {
+        return `'${value.replace(/'/g, `'\\''`)}'`;
+    };
+
+    try {
+        const request: SessionListDirectoryRequest = { path };
+        const response = await apiSocket.machineRPC<SessionListDirectoryResponse, SessionListDirectoryRequest>(
+            machineId,
+            'listDirectory',
+            request
+        );
+        return response;
+    } catch (error) {
+        // Backward compatibility: older daemons may not expose machine-level listDirectory.
+        // Fallback to bash-based listing so folder picker still works.
+        const escapedPath = shellEscape(path);
+        const bashResult = await machineBash(
+            machineId,
+            `if [ -d ${escapedPath} ]; then ls -1A -p ${escapedPath}; else echo "Directory not found" >&2; exit 2; fi`,
+            '/'
+        );
+
+        if (bashResult.success && bashResult.exitCode === 0) {
+            return {
+                success: true,
+                entries: parseDirectoriesFromLs(bashResult.stdout),
+            };
+        }
+
+        return {
+            success: false,
+            error: bashResult.stderr || (error instanceof Error ? error.message : 'Unknown error')
         };
     }
 }

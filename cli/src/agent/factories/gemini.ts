@@ -40,7 +40,7 @@ export interface GeminiBackendOptions extends AgentFactoryOptions {
   
   /** Model to use. If undefined, will use local config, env var, or default.
    *  If explicitly set to null, will use default (skip local config).
-   *  (defaults to GEMINI_MODEL env var or 'gemini-2.5-pro') */
+   *  (defaults to GEMINI_MODEL env var or 'gemini-3-pro') */
   model?: string | null;
   
   /** MCP servers to make available to the agent */
@@ -184,4 +184,3 @@ export function registerGeminiAgent(): void {
   agentRegistry.register('gemini', (opts) => createGeminiBackend(opts).backend);
   logger.debug('[Gemini] Registered with agent registry');
 }
-
