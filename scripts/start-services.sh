@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Ensure bash semantics even when invoked via `sh start-services.sh`
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
+
 # 开发环境启动脚本（不含 Daemon）
 # 仅启动 Docker 服务 + Server + Expo Web
 # 可通过 RESTART=1 强制重启服务
@@ -47,6 +52,21 @@ log_section() {
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "${CYAN}  $1${NC}"
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+wait_for_port_listen() {
+  local port="$1"
+  local max_retries="${2:-30}"
+  local retry_count=0
+
+  while [[ ${retry_count} -lt ${max_retries} ]]; do
+    if lsof -ti tcp:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
+      return 0
+    fi
+    retry_count=$((retry_count + 1))
+    sleep 1
+  done
+  return 1
 }
 
 check_docker() {
@@ -103,6 +123,40 @@ start_postgres() {
     -p 5432:5432
 }
 
+wait_for_postgres() {
+  local max_retries="${1:-45}"
+  local retry_count=0
+
+  log_info "等待 PostgreSQL 就绪..."
+
+  if docker ps -a --format '{{.Names}}' | grep -q "^${PG_CONTAINER_NAME}\$"; then
+    while [[ ${retry_count} -lt ${max_retries} ]]; do
+      if docker exec "${PG_CONTAINER_NAME}" pg_isready -U postgres -d handy >/dev/null 2>&1; then
+        log_success "PostgreSQL 已就绪"
+        return 0
+      fi
+      retry_count=$((retry_count + 1))
+      sleep 1
+    done
+
+    log_error "PostgreSQL 在 ${max_retries} 秒内未就绪"
+    docker logs "${PG_CONTAINER_NAME}" --tail 40 2>/dev/null || true
+    return 1
+  fi
+
+  while [[ ${retry_count} -lt ${max_retries} ]]; do
+    if nc -z localhost 5432 >/dev/null 2>&1; then
+      log_success "PostgreSQL 端口已就绪"
+      return 0
+    fi
+    retry_count=$((retry_count + 1))
+    sleep 1
+  done
+
+  log_error "未检测到可用的 PostgreSQL (localhost:5432)"
+  return 1
+}
+
 start_redis() {
   log_info "检查 Redis (6379)..."
   ensure_container "${REDIS_CONTAINER_NAME}" "redis:latest" \
@@ -153,6 +207,7 @@ init_minio_bucket() {
 
 start_server() {
   log_info "准备启动 Server (3005)..."
+  wait_for_postgres
   kill_port 3005
   mkdir -p "${LOG_DIR}" "${TMP_DIR}"
   cd "${ROOT_DIR}/server"
@@ -164,6 +219,14 @@ start_server() {
   nohup sh -c "TMPDIR=\"${TMP_DIR}\" corepack yarn tsx --env-file=.env.dev ./sources/main.ts" \
     > "${LOG_DIR}/server.log" 2>&1 &
   log_success "Server 启动中，日志: ${LOG_DIR}/server.log"
+
+  if ! wait_for_port_listen 3005 30; then
+    log_error "Server 启动失败，请检查日志: ${LOG_DIR}/server.log"
+    tail -n 60 "${LOG_DIR}/server.log" 2>/dev/null || true
+    return 1
+  fi
+
+  log_success "Server 已就绪 (3005)"
 }
 
 start_expo() {

@@ -26,12 +26,13 @@ import { useRouter } from 'expo-router';
 import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { sessionDelete, sessionKill, machineSpawnNewSession } from '@/sync/ops';
+import { sessionDelete, sessionKill } from '@/sync/ops';
 import { useAllMachines, storage } from '@/sync/storage';
 import { HappyError } from '@/utils/errors';
 import { Modal } from '@/modal';
 import { apiSocket } from '@/sync/apiSocket';
 import { sync } from '@/sync/sync';
+import { reactivateSession, SessionReactivateMode } from '@/utils/sessionReactivation';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -432,59 +433,59 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         });
     }, [performArchive]);
 
+    const reactivateModeRef = React.useRef<SessionReactivateMode>('new-from-template');
     const [reactivatingSession, performReactivate] = useHappyAction(async () => {
-        let targetMachineId = session.metadata?.machineId;
-        const directory = session.metadata?.path;
+        try {
+            const { sessionId, usedFallback } = await reactivateSession({
+                session,
+                activeMachines,
+                mode: reactivateModeRef.current,
+            });
 
-        if (!directory || !targetMachineId) {
-            throw new HappyError("Missing session metadata", false);
-        }
-
-        // Fallback logic similar to SessionRestartButton
-        const isOriginalActive = activeMachines.some(m => m.id === targetMachineId);
-        if (!isOriginalActive) {
-            if (activeMachines.length > 0) {
-                targetMachineId = activeMachines[0].id;
-            } else {
-                throw new HappyError("No active machines found. Please ensure your terminal is running 'happy'.", false);
+            if (usedFallback) {
+                Modal.alert(
+                    t('sessionInfo.reactivateContinueUnavailableTitle'),
+                    t('sessionInfo.reactivateContinueUnavailableMessage'),
+                    [{
+                        text: t('common.ok'),
+                        onPress: () => navigateToSession(sessionId)
+                    }]
+                );
+                return;
             }
-        }
 
-        const result = await machineSpawnNewSession({
-            machineId: targetMachineId,
-            directory,
-            model: session.modelMode ?? undefined
-        });
-
-        if (result.type === 'success') {
-            navigateToSession(result.sessionId);
-        } else if (result.type === 'error') {
-            throw new HappyError(result.errorMessage, false);
-        } else if (result.type === 'requestToApproveDirectoryCreation') {
-            // Should not happen for existing sessions, but for safety:
-            const confirmed = await Modal.confirm(
-                t('newSession.directoryDoesNotExist'),
-                t('newSession.createDirectoryConfirm', { directory: result.directory })
+            navigateToSession(sessionId);
+        } catch (error) {
+            throw new HappyError(
+                error instanceof Error ? error.message : t('newSession.failedToStart'),
+                false
             );
-            if (confirmed) {
-                const retryResult = await machineSpawnNewSession({
-                    machineId: targetMachineId,
-                    directory,
-                    approvedNewDirectoryCreation: true,
-                    model: session.modelMode ?? undefined
-                });
-                if (retryResult.type === 'success') {
-                    navigateToSession(retryResult.sessionId);
-                } else if (retryResult.type === 'error') {
-                    throw new HappyError(retryResult.errorMessage, false);
-                }
-            }
         }
     });
 
     const handleReactivate = React.useCallback(() => {
         swipeableRef.current?.close();
-        performReactivate();
+        Modal.alert(
+            t('sessionInfo.reactivateSession'),
+            t('sessionInfo.reactivateSessionChooseAction'),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: t('sessionInfo.reactivateContinueOriginal'),
+                    onPress: () => {
+                        reactivateModeRef.current = 'continue-original';
+                        performReactivate();
+                    }
+                },
+                {
+                    text: t('sessionInfo.reactivateFromTemplate'),
+                    onPress: () => {
+                        reactivateModeRef.current = 'new-from-template';
+                        performReactivate();
+                    }
+                }
+            ]
+        );
     }, [performReactivate]);
 
     const handleDelete = React.useCallback(() => {
@@ -723,7 +724,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                             <ActivityIndicator size="small" color={styles.actionButtonIcon.color} />
                         ) : (
                             <Ionicons
-                                name={session.active ? "archive-outline" : "play-outline"}
+                                name={session.active ? "pause-circle-outline" : "play-outline"}
                                 size={16}
                                 style={styles.actionButtonIcon}
                             />
@@ -778,7 +779,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             {archivingSession || reactivatingSession ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-                <Ionicons name={session.active ? "archive-outline" : "play-outline"} size={20} color="#FFFFFF" />
+                <Ionicons name={session.active ? "pause-circle-outline" : "play-outline"} size={20} color="#FFFFFF" />
             )}
             <Text style={styles.swipeActionText} numberOfLines={2}>
                 {archivingSession || reactivatingSession ? t('common.loading') : (session.active ? t('sessionInfo.archiveSession') : t('sessionInfo.reactivateSession'))}

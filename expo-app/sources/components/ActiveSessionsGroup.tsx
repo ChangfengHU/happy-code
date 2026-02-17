@@ -700,7 +700,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             <ActivityIndicator size="small" color={styles.actionButtonIcon.color} />
                         ) : (
                             <Ionicons
-                                name="archive-outline"
+                                name="pause-circle-outline"
                                 size={16}
                                 style={styles.actionButtonIcon}
                             />
@@ -744,7 +744,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
             {archivingSession ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-                <Ionicons name="archive-outline" size={20} color="#FFFFFF" />
+                <Ionicons name="pause-circle-outline" size={20} color="#FFFFFF" />
             )}
             <Text style={styles.swipeActionText} numberOfLines={2}>
                 {archivingSession ? t('common.loading') : t('sessionInfo.archiveSession')}

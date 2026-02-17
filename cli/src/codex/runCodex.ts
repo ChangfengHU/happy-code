@@ -66,6 +66,7 @@ export function emitReadyIfIdle({ pending, queueSize, shouldExit, sendReady, not
 export async function runCodex(opts: {
     credentials: Credentials;
     startedBy?: 'daemon' | 'terminal';
+    resumeSessionId?: string;
 }): Promise<void> {
     // Use shared PermissionMode type for cross-agent compatibility
     type PermissionMode = import('@/api/types').PermissionMode;
@@ -91,7 +92,7 @@ export async function runCodex(opts: {
     const api = await ApiClient.create(opts.credentials);
 
     // Log startup options
-    logger.debug(`[codex] Starting with options: startedBy=${opts.startedBy || 'terminal'}`);
+    logger.debug(`[codex] Starting with options: startedBy=${opts.startedBy || 'terminal'}, resumeSessionId=${opts.resumeSessionId || 'none'}`);
 
     //
     // Machine
@@ -384,6 +385,20 @@ export async function runCodex(opts: {
     //
 
     const client = new CodexMcpClient();
+    let lastSyncedCodexSessionId: string | null = null;
+
+    const syncCodexSessionIdToMetadata = () => {
+        const codexSessionId = client.getSessionId();
+        if (!codexSessionId || codexSessionId === lastSyncedCodexSessionId) {
+            return;
+        }
+
+        lastSyncedCodexSessionId = codexSessionId;
+        session.updateMetadata((currentMetadata) => ({
+            ...currentMetadata,
+            codexSessionId
+        }));
+    };
 
     // Helper: find Codex session transcript for a given sessionId
     function findCodexResumeFile(sessionId: string | null): string | null {
@@ -425,6 +440,11 @@ export async function runCodex(opts: {
         } catch {
             return null;
         }
+    }
+    let startupResumeFile: string | null = null;
+    if (opts.resumeSessionId) {
+        startupResumeFile = findCodexResumeFile(opts.resumeSessionId);
+        logger.debug(`[Codex] Startup resume lookup: session=${opts.resumeSessionId}, file=${startupResumeFile || 'not-found'}`);
     }
     permissionHandler = new CodexPermissionHandler(session);
     const reasoningProcessor = new ReasoningProcessor((message) => {
@@ -577,6 +597,8 @@ export async function runCodex(opts: {
                 diffProcessor.processDiff(msg.unified_diff);
             }
         }
+
+        syncCodexSessionIdToMetadata();
     });
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
@@ -598,7 +620,10 @@ export async function runCodex(opts: {
         let currentModeHash: string | null = null;
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
         // If we restart (e.g., mode change), use this to carry a resume file
-        let nextExperimentalResume: string | null = null;
+        let nextExperimentalResume: string | null = startupResumeFile;
+        if (nextExperimentalResume) {
+            messageBuffer.addMessage('Resuming previous Codex context...', 'status');
+        }
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
@@ -709,11 +734,11 @@ export async function runCodex(opts: {
                     // Check for resume file from multiple sources
                     let resumeFile: string | null = null;
 
-                    // Priority 1: Explicit resume file from mode change
+                    // Priority 1: Resume file from startup or mode change
                     if (nextExperimentalResume) {
                         resumeFile = nextExperimentalResume;
                         nextExperimentalResume = null; // consume once
-                        logger.debug('[Codex] Using resume file from mode change:', resumeFile);
+                        logger.debug('[Codex] Using queued resume file:', resumeFile);
                     }
                     // Priority 2: Resume from stored abort session
                     else if (storedSessionIdForResume) {
@@ -735,6 +760,7 @@ export async function runCodex(opts: {
                         startConfig,
                         { signal: abortController.signal }
                     );
+                    syncCodexSessionIdToMetadata();
                     wasCreated = true;
                     first = false;
                 } else {
@@ -743,6 +769,7 @@ export async function runCodex(opts: {
                         { signal: abortController.signal }
                     );
                     logger.debug('[Codex] continueSession response:', response);
+                    syncCodexSessionIdToMetadata();
                 }
             } catch (error) {
                 logger.warn('Error in codex session:', error);

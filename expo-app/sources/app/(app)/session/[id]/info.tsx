@@ -269,7 +269,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         <Item
                             title={t('sessionInfo.archiveSession')}
                             subtitle={t('sessionInfo.archiveSessionSubtitle')}
-                            icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
+                            icon={<Ionicons name="pause-circle-outline" size={29} color="#FF3B30" />}
                             onPress={handleArchiveSession}
                         />
                     )}

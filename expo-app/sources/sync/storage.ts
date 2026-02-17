@@ -119,6 +119,7 @@ interface StorageState {
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-3-pro' | 'gemini-3-flash' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'gpt-5.3-codex' | 'gpt-5.2-codex' | 'gpt-5.2' | 'gpt-5.1-codex-max' | 'gpt-5.1-codex-mini') => void;
     updateSessionCodexReasoningEffort: (sessionId: string, effort: 'low' | 'medium' | 'high' | 'xhigh') => void;
+    copySessionMessagesForReactivation: (sourceSessionId: string, targetSessionId: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -847,6 +848,37 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions
+            };
+        }),
+        copySessionMessagesForReactivation: (sourceSessionId: string, targetSessionId: string) => set((state) => {
+            const sourceSessionMessages = state.sessionMessages[sourceSessionId];
+            if (!sourceSessionMessages || sourceSessionMessages.messages.length === 0) {
+                return state;
+            }
+
+            const targetSessionMessages = state.sessionMessages[targetSessionId];
+            if (targetSessionMessages?.messages.length) {
+                return state;
+            }
+
+            // Keep message IDs unchanged so future server sync can naturally deduplicate.
+            const clonedMessages = sourceSessionMessages.messages.map((message) => ({ ...message }));
+            const clonedMessagesMap: Record<string, Message> = {};
+            clonedMessages.forEach((message) => {
+                clonedMessagesMap[message.id] = message;
+            });
+
+            return {
+                ...state,
+                sessionMessages: {
+                    ...state.sessionMessages,
+                    [targetSessionId]: {
+                        reducerState: targetSessionMessages?.reducerState || createReducer(),
+                        messages: clonedMessages,
+                        messagesMap: clonedMessagesMap,
+                        isLoaded: true
+                    } satisfies SessionMessages
+                }
             };
         }),
         // Project management methods

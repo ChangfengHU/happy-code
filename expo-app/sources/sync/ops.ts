@@ -137,6 +137,9 @@ export interface SpawnSessionOptions {
     machineId: string;
     directory: string;
     approvedNewDirectoryCreation?: boolean;
+    // Resume identifier used by daemon for agent-specific recovery
+    // (currently consumed by Claude/Codex as --resume <sessionId>)
+    resumeSessionId?: string;
     token?: string;
     agent?: 'codex' | 'claude' | 'gemini';
     reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
@@ -161,13 +164,24 @@ export interface SpawnSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
 
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, reasoningEffort, environmentVariables, model } = options;
+    const {
+        machineId,
+        directory,
+        approvedNewDirectoryCreation = false,
+        resumeSessionId,
+        token,
+        agent,
+        reasoningEffort,
+        environmentVariables,
+        model
+    } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
             type: 'spawn-in-directory'
             directory: string
             approvedNewDirectoryCreation?: boolean,
+            sessionId?: string,
             token?: string,
             agent?: 'codex' | 'claude' | 'gemini',
             reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
@@ -176,7 +190,17 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, reasoningEffort, environmentVariables, model }
+            {
+                type: 'spawn-in-directory',
+                directory,
+                approvedNewDirectoryCreation,
+                sessionId: resumeSessionId,
+                token,
+                agent,
+                reasoningEffort,
+                environmentVariables,
+                model
+            }
         );
         return result;
     } catch (error) {

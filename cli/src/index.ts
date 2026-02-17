@@ -89,11 +89,18 @@ import { execFileSync } from 'node:child_process'
       // Parse startedBy argument
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
       let force = false;
+      let resumeSessionId: string | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
         } else if (args[i] === '--force') {
           force = true;
+        } else if (args[i] === '--resume') {
+          const next = args[i + 1];
+          if (next && !next.startsWith('-')) {
+            resumeSessionId = next;
+            i++;
+          }
         }
       }
 
@@ -119,7 +126,7 @@ import { execFileSync } from 'node:child_process'
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      await runCodex({ credentials, startedBy });
+      await runCodex({ credentials, startedBy, resumeSessionId });
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
