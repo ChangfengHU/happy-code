@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, FlatList, Platform } from 'react-native';
+import { View, Pressable, FlatList, Platform, ActivityIndicator, TextInput } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
@@ -26,9 +26,12 @@ import { useRouter } from 'expo-router';
 import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { sessionDelete, sessionKill } from '@/sync/ops';
+import { sessionDelete, sessionKill, machineSpawnNewSession } from '@/sync/ops';
+import { useAllMachines, storage } from '@/sync/storage';
 import { HappyError } from '@/utils/errors';
 import { Modal } from '@/modal';
+import { apiSocket } from '@/sync/apiSocket';
+import { sync } from '@/sync/sync';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -239,6 +242,15 @@ const stylesheet = StyleSheet.create((theme) => ({
     actionButtonIconDestructive: {
         color: '#ef4444',
     },
+    titleInput: {
+        fontSize: 15,
+        fontWeight: '500',
+        flex: 1,
+        color: 'inherit',
+        padding: 0,
+        margin: 0,
+        ...Typography.default('semiBold'),
+    },
 }));
 
 export function SessionsList() {
@@ -387,6 +399,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
     const isWeb = Platform.OS === 'web';
+    const activeMachines = useAllMachines();
 
     const [archivingSession, performArchive] = useHappyAction(async () => {
         const result = await sessionKill(session.id);
@@ -419,6 +432,61 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
         });
     }, [performArchive]);
 
+    const [reactivatingSession, performReactivate] = useHappyAction(async () => {
+        let targetMachineId = session.metadata?.machineId;
+        const directory = session.metadata?.path;
+
+        if (!directory || !targetMachineId) {
+            throw new HappyError("Missing session metadata", false);
+        }
+
+        // Fallback logic similar to SessionRestartButton
+        const isOriginalActive = activeMachines.some(m => m.id === targetMachineId);
+        if (!isOriginalActive) {
+            if (activeMachines.length > 0) {
+                targetMachineId = activeMachines[0].id;
+            } else {
+                throw new HappyError("No active machines found. Please ensure your terminal is running 'happy'.", false);
+            }
+        }
+
+        const result = await machineSpawnNewSession({
+            machineId: targetMachineId,
+            directory,
+            model: session.modelMode ?? undefined
+        });
+
+        if (result.type === 'success') {
+            navigateToSession(result.sessionId);
+        } else if (result.type === 'error') {
+            throw new HappyError(result.errorMessage, false);
+        } else if (result.type === 'requestToApproveDirectoryCreation') {
+            // Should not happen for existing sessions, but for safety:
+            const confirmed = await Modal.confirm(
+                t('newSession.directoryDoesNotExist'),
+                t('newSession.createDirectoryConfirm', { directory: result.directory })
+            );
+            if (confirmed) {
+                const retryResult = await machineSpawnNewSession({
+                    machineId: targetMachineId,
+                    directory,
+                    approvedNewDirectoryCreation: true,
+                    model: session.modelMode ?? undefined
+                });
+                if (retryResult.type === 'success') {
+                    navigateToSession(retryResult.sessionId);
+                } else if (retryResult.type === 'error') {
+                    throw new HappyError(retryResult.errorMessage, false);
+                }
+            }
+        }
+    });
+
+    const handleReactivate = React.useCallback(() => {
+        swipeableRef.current?.close();
+        performReactivate();
+    }, [performReactivate]);
+
     const handleDelete = React.useCallback(() => {
         swipeableRef.current?.close();
         Modal.confirm(
@@ -439,9 +507,102 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     // Hover state for web
     const [isHovered, setIsHovered] = React.useState(false);
 
+    // Renaming state
+    const [isRenaming, setIsRenaming] = React.useState(false);
+    const [editingName, setEditingName] = React.useState('');
+    const inputRef = React.useRef<TextInput>(null);
+
+    // Double click detection
+    const lastClickTimeRef = React.useRef(0);
+    const DOUBLE_CLICK_DELAY = 300; // ms
+
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
+
+    // Handle click on title - detect double click for renaming
+    const handleTitleClick = React.useCallback(() => {
+        if (!isWeb) return;
+
+        const now = Date.now();
+        const timeSinceLastClick = now - lastClickTimeRef.current;
+
+        if (timeSinceLastClick < DOUBLE_CLICK_DELAY) {
+            // Double click detected
+            const currentName = session.metadata?.name || '';
+            setEditingName(currentName);
+            setIsRenaming(true);
+            // Focus input after state update
+            setTimeout(() => {
+                inputRef.current?.focus();
+            }, 50);
+            lastClickTimeRef.current = 0; // Reset
+        } else {
+            // Single click - let it propagate to navigation
+            lastClickTimeRef.current = now;
+        }
+    }, [isWeb, session.metadata?.name]);
+
+    // Handle rename save
+    const handleRenameSave = React.useCallback(async () => {
+        if (editingName === (session.metadata?.name || '')) {
+            setIsRenaming(false);
+            return;
+        }
+
+        try {
+            const sessionEncryption = sync.encryption.getSessionEncryption(session.id);
+            if (!sessionEncryption) {
+                throw new Error('Session encryption not found');
+            }
+
+            // Get current metadata
+            const currentMetadata = session.metadata || {};
+            const newMetadata = { ...currentMetadata, name: editingName };
+
+            // Encrypt new metadata
+            const encryptedMetadata = await sessionEncryption.encryptRaw(newMetadata);
+
+            // Send update via socket
+            const result = await apiSocket.emitWithAck<{
+                result: 'success' | 'version-mismatch' | 'error';
+                version?: number;
+                metadata?: string;
+            }>('update-metadata', {
+                sid: session.id,
+                metadata: encryptedMetadata,
+                expectedVersion: session.metadataVersion
+            });
+
+            if (result.result === 'success') {
+                setIsRenaming(false);
+            } else if (result.result === 'version-mismatch') {
+                // Version mismatch - the metadata was updated elsewhere
+                setIsRenaming(false);
+            } else {
+                // Error
+                setIsRenaming(false);
+            }
+        } catch (error) {
+            console.error('Failed to rename session:', error);
+            setIsRenaming(false);
+        }
+    }, [editingName, session.id, session.metadata, session.metadataVersion]);
+
+    // Handle rename cancel
+    const handleRenameCancel = React.useCallback(() => {
+        setIsRenaming(false);
+        setEditingName(session.metadata?.name || '');
+    }, [session.metadata?.name]);
+
+    // Handle key press in input
+    const handleKeyPress = React.useCallback((e: any) => {
+        if (e.nativeEvent.key === 'Enter') {
+            handleRenameSave();
+        } else if (e.nativeEvent.key === 'Escape') {
+            handleRenameCancel();
+        }
+    }, [handleRenameSave, handleRenameCancel]);
 
     const itemContent = (
         <View
@@ -459,11 +620,13 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             <Pressable
                 style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
                 onPressIn={() => {
+                    if (isRenaming) return;
                     if (isTablet) {
                         navigateToSession(session.id);
                     }
                 }}
                 onPress={() => {
+                    if (isRenaming) return;
                     if (!isTablet) {
                         navigateToSession(session.id);
                     }
@@ -484,12 +647,42 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 <View style={styles.sessionContent}>
                     {/* Title line */}
                     <View style={styles.sessionTitleRow}>
-                        <Text style={[
-                            styles.sessionTitle,
-                            sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
-                        ]} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
-                            {sessionName}
-                        </Text>
+                        {isRenaming && isWeb ? (
+                            <TextInput
+                                ref={inputRef}
+                                style={[
+                                    styles.titleInput,
+                                    sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                                ]}
+                                value={editingName}
+                                onChangeText={setEditingName}
+                                onKeyPress={handleKeyPress}
+                                onBlur={handleRenameSave}
+                                selectTextOnFocus
+                                numberOfLines={1}
+                            />
+                        ) : (
+                            <Pressable
+                                onPointerDown={(e) => {
+                                    e.stopPropagation();
+                                    handleTitleClick();
+                                }}
+                                style={({ pressed }) => [
+                                    { flex: 1 },
+                                    pressed && { opacity: 0.7 }
+                                ]}
+                            >
+                                <Text
+                                    style={[
+                                        styles.sessionTitle,
+                                        sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                                    ]}
+                                    numberOfLines={1}
+                                >
+                                    {sessionName}
+                                </Text>
+                            </Pressable>
+                        )}
                     </View>
 
                     {/* Subtitle line */}
@@ -520,15 +713,19 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                             styles.actionButton,
                             pressed && styles.actionButtonPressed
                         ]}
-                        onPress={handleArchive}
-                        disabled={archivingSession}
+                        onPress={session.active ? handleArchive : handleReactivate}
+                        disabled={archivingSession || reactivatingSession}
                         hitSlop={4}
                     >
-                        <Ionicons
-                            name="archive-outline"
-                            size={16}
-                            style={styles.actionButtonIcon}
-                        />
+                        {archivingSession || reactivatingSession ? (
+                            <ActivityIndicator size="small" color={styles.actionButtonIcon.color} />
+                        ) : (
+                            <Ionicons
+                                name={session.active ? "archive-outline" : "play-outline"}
+                                size={16}
+                                style={styles.actionButtonIcon}
+                            />
+                        )}
                     </Pressable>
                     <Pressable
                         style={({ pressed }) => [
@@ -540,11 +737,15 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                         disabled={deletingSession}
                         hitSlop={4}
                     >
-                        <Ionicons
-                            name="trash-outline"
-                            size={16}
-                            style={styles.actionButtonIconDestructive}
-                        />
+                        {deletingSession ? (
+                            <ActivityIndicator size="small" color={styles.actionButtonIconDestructive.color} />
+                        ) : (
+                            <Ionicons
+                                name="trash-outline"
+                                size={16}
+                                style={styles.actionButtonIconDestructive}
+                            />
+                        )}
                     </Pressable>
                 </View>
             )}
@@ -569,12 +770,16 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const renderRightActions = () => (
         <Pressable
             style={styles.swipeAction}
-            onPress={handleArchive}
-            disabled={archivingSession}
+            onPress={session.active ? handleArchive : handleReactivate}
+            disabled={archivingSession || reactivatingSession}
         >
-            <Ionicons name="archive-outline" size={20} color="#FFFFFF" />
+            {archivingSession || reactivatingSession ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+                <Ionicons name={session.active ? "archive-outline" : "play-outline"} size={20} color="#FFFFFF" />
+            )}
             <Text style={styles.swipeActionText} numberOfLines={2}>
-                {t('sessionInfo.archiveSession')}
+                {archivingSession || reactivatingSession ? t('common.loading') : (session.active ? t('sessionInfo.archiveSession') : t('sessionInfo.reactivateSession'))}
             </Text>
         </Pressable>
     );

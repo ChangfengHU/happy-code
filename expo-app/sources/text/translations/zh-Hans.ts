@@ -333,6 +333,7 @@ export const zhHans: TranslationStructure = {
         killSessionConfirm: '您确定要终止此会话吗？',
         archiveSession: '归档会话',
         archiveSessionConfirm: '您确定要归档此会话吗？',
+        reactivateSession: '重新激活会话',
         happySessionIdCopied: 'Happy 会话 ID 已复制到剪贴板',
         failedToCopySessionId: '复制 Happy 会话 ID 失败',
         happySessionId: 'Happy 会话 ID',

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { View, Pressable, Platform, ActivityIndicator, TextInput } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { router, useRouter } from 'expo-router';
@@ -23,6 +23,8 @@ import { ProjectGitStatus } from './ProjectGitStatus';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { sessionDelete } from '@/sync/ops';
+import { apiSocket } from '@/sync/apiSocket';
+import { sync } from '@/sync/sync';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -194,6 +196,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     actionButtonIconDestructive: {
         color: '#ef4444',
+    },
+    titleInput: {
+        fontSize: 15,
+        flex: 1,
+        color: 'inherit',
+        padding: 0,
+        margin: 0,
+        ...Typography.default('regular'),
     },
 }));
 
@@ -397,6 +407,99 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         });
     }, [performDelete]);
 
+    // Renaming state
+    const [isRenaming, setIsRenaming] = React.useState(false);
+    const [editingName, setEditingName] = React.useState('');
+    const inputRef = React.useRef<TextInput>(null);
+
+    // Double click detection
+    const lastClickTimeRef = React.useRef(0);
+    const DOUBLE_CLICK_DELAY = 300; // ms
+
+    // Handle click on title - detect double click for renaming
+    const handleTitleClick = React.useCallback(() => {
+        if (!isWeb) return;
+
+        const now = Date.now();
+        const timeSinceLastClick = now - lastClickTimeRef.current;
+
+        if (timeSinceLastClick < DOUBLE_CLICK_DELAY) {
+            // Double click detected
+            const currentName = session.metadata?.name || '';
+            setEditingName(currentName);
+            setIsRenaming(true);
+            // Focus input after state update
+            setTimeout(() => {
+                inputRef.current?.focus();
+            }, 50);
+            lastClickTimeRef.current = 0; // Reset
+        } else {
+            // Single click - let it propagate to navigation
+            lastClickTimeRef.current = now;
+        }
+    }, [isWeb, session.metadata?.name]);
+
+    // Handle rename save
+    const handleRenameSave = React.useCallback(async () => {
+        if (editingName === (session.metadata?.name || '')) {
+            setIsRenaming(false);
+            return;
+        }
+
+        try {
+            const sessionEncryption = sync.encryption.getSessionEncryption(session.id);
+            if (!sessionEncryption) {
+                throw new Error('Session encryption not found');
+            }
+
+            // Get current metadata
+            const currentMetadata = session.metadata || {};
+            const newMetadata = { ...currentMetadata, name: editingName };
+
+            // Encrypt new metadata
+            const encryptedMetadata = await sessionEncryption.encryptRaw(newMetadata);
+
+            // Send update via socket
+            const result = await apiSocket.emitWithAck<{
+                result: 'success' | 'version-mismatch' | 'error';
+                version?: number;
+                metadata?: string;
+            }>('update-metadata', {
+                sid: session.id,
+                metadata: encryptedMetadata,
+                expectedVersion: session.metadataVersion
+            });
+
+            if (result.result === 'success') {
+                setIsRenaming(false);
+            } else if (result.result === 'version-mismatch') {
+                // Version mismatch - the metadata was updated elsewhere
+                setIsRenaming(false);
+            } else {
+                // Error
+                setIsRenaming(false);
+            }
+        } catch (error) {
+            console.error('Failed to rename session:', error);
+            setIsRenaming(false);
+        }
+    }, [editingName, session.id, session.metadata, session.metadataVersion]);
+
+    // Handle rename cancel
+    const handleRenameCancel = React.useCallback(() => {
+        setIsRenaming(false);
+        setEditingName(session.metadata?.name || '');
+    }, [session.metadata?.name]);
+
+    // Handle key press in input
+    const handleKeyPress = React.useCallback((e: any) => {
+        if (e.nativeEvent.key === 'Enter') {
+            handleRenameSave();
+        } else if (e.nativeEvent.key === 'Escape') {
+            handleRenameCancel();
+        }
+    }, [handleRenameSave, handleRenameCancel]);
+
     // Hover state for web
     const [isHovered, setIsHovered] = React.useState(false);
 
@@ -414,11 +517,13 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
             <Pressable
                 style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
                 onPressIn={() => {
+                    if (isRenaming) return;
                     if (isTablet) {
                         navigateToSession(session.id);
                     }
                 }}
                 onPress={() => {
+                    if (isRenaming) return;
                     if (!isTablet) {
                         navigateToSession(session.id);
                     }
@@ -427,57 +532,81 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 <View style={styles.sessionContent}>
                     {/* Title line with status */}
                     <View style={styles.sessionTitleRow}>
-                        {/* Status dot or draft icon on the left */}
-                        {(() => {
-                            // Show draft icon when online with draft
-                            if (sessionStatus.state === 'waiting' && session.draft) {
-                                return (
-                                    <Ionicons
-                                        name="create-outline"
-                                        size={14}
-                                        color={theme.colors.textSecondary}
-                                        style={{ marginRight: 8 }}
-                                    />
-                                );
-                            }
-
-                            // Show status dot only for permission_required/thinking states
-                            if (sessionStatus.state === 'permission_required' || sessionStatus.state === 'thinking') {
-                                return (
-                                    <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
-                                        <StatusDot
-                                            color={sessionStatus.statusDotColor}
-                                            isPulsing={sessionStatus.isPulsing}
-                                        />
-                                    </View>
-                                );
-                            }
-
-                            // Show grey dot for online without draft
-                            if (sessionStatus.state === 'waiting') {
-                                return (
-                                    <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
-                                        <StatusDot
-                                            color={theme.colors.textSecondary}
-                                            isPulsing={false}
-                                        />
-                                    </View>
-                                );
-                            }
-
-                            return null;
-                        })()}
-
-                        <Text
-                            style={[
-                                styles.sessionTitle,
-                                sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
-                            ]}
-                            numberOfLines={2}
-                        >
-                            {sessionName}
-                        </Text>
+                        {isRenaming && isWeb ? (
+                            <TextInput
+                                ref={inputRef}
+                                style={styles.titleInput}
+                                value={editingName}
+                                onChangeText={setEditingName}
+                                onKeyPress={handleKeyPress}
+                                onBlur={handleRenameSave}
+                                selectTextOnFocus
+                                numberOfLines={1}
+                            />
+                        ) : (
+                            <Pressable
+                                onPointerDown={(e) => {
+                                    e.stopPropagation();
+                                    handleTitleClick();
+                                }}
+                                style={({ pressed }) => [
+                                    { flex: 1 },
+                                    pressed && { opacity: 0.7 }
+                                ]}
+                            >
+                                <Text
+                                    style={[
+                                        styles.sessionTitle,
+                                        sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                                    ]}
+                                    numberOfLines={2}
+                                >
+                                    {sessionName}
+                                </Text>
+                            </Pressable>
+                        )}
                     </View>
+
+                    {/* Status dot or draft icon on the left */}
+                    {(() => {
+                        // Show draft icon when online with draft
+                        if (sessionStatus.state === 'waiting' && session.draft) {
+                            return (
+                                <Ionicons
+                                    name="create-outline"
+                                    size={14}
+                                    color={theme.colors.textSecondary}
+                                    style={{ marginRight: 8 }}
+                                />
+                            );
+                        }
+
+                        // Show status dot only for permission_required/thinking states
+                        if (sessionStatus.state === 'permission_required' || sessionStatus.state === 'thinking') {
+                            return (
+                                <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
+                                    <StatusDot
+                                        color={sessionStatus.statusDotColor}
+                                        isPulsing={sessionStatus.isPulsing}
+                                    />
+                                </View>
+                            );
+                        }
+
+                        // Show grey dot for online without draft
+                        if (sessionStatus.state === 'waiting') {
+                            return (
+                                <View style={[styles.statusDotContainer, { marginRight: 8 }]}>
+                                    <StatusDot
+                                        color={theme.colors.textSecondary}
+                                        isPulsing={false}
+                                    />
+                                </View>
+                            );
+                        }
+
+                        return null;
+                    })()}
                 </View>
             </Pressable>
 
@@ -490,14 +619,18 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             pressed && styles.actionButtonPressed
                         ]}
                         onPress={handleArchive}
-                        disabled={archivingSession}
+                        disabled={archivingSession || deletingSession}
                         hitSlop={4}
                     >
-                        <Ionicons
-                            name="archive-outline"
-                            size={16}
-                            style={styles.actionButtonIcon}
-                        />
+                        {archivingSession ? (
+                            <ActivityIndicator size="small" color={styles.actionButtonIcon.color} />
+                        ) : (
+                            <Ionicons
+                                name="archive-outline"
+                                size={16}
+                                style={styles.actionButtonIcon}
+                            />
+                        )}
                     </Pressable>
                     <Pressable
                         style={({ pressed }) => [
@@ -506,14 +639,18 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             pressed && styles.actionButtonDestructivePressed
                         ]}
                         onPress={handleDelete}
-                        disabled={deletingSession}
+                        disabled={deletingSession || archivingSession}
                         hitSlop={4}
                     >
-                        <Ionicons
-                            name="trash-outline"
-                            size={16}
-                            style={styles.actionButtonIconDestructive}
-                        />
+                        {deletingSession ? (
+                            <ActivityIndicator size="small" color={styles.actionButtonIconDestructive.color} />
+                        ) : (
+                            <Ionicons
+                                name="trash-outline"
+                                size={16}
+                                style={styles.actionButtonIconDestructive}
+                            />
+                        )}
                     </Pressable>
                 </View>
             )}
@@ -528,11 +665,15 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         <Pressable
             style={styles.swipeAction}
             onPress={handleArchive}
-            disabled={archivingSession}
+            disabled={archivingSession || deletingSession}
         >
-            <Ionicons name="archive-outline" size={20} color="#FFFFFF" />
+            {archivingSession ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+                <Ionicons name="archive-outline" size={20} color="#FFFFFF" />
+            )}
             <Text style={styles.swipeActionText} numberOfLines={2}>
-                {t('sessionInfo.archiveSession')}
+                {archivingSession ? t('common.loading') : t('sessionInfo.archiveSession')}
             </Text>
         </Pressable>
     );

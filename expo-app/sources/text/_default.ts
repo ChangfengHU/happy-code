@@ -330,6 +330,7 @@ export const en = {
         killSessionConfirm: 'Are you sure you want to terminate this session?',
         archiveSession: 'Archive Session',
         archiveSessionConfirm: 'Are you sure you want to archive this session?',
+        reactivateSession: 'Reactivate Session',
         happySessionIdCopied: 'Happy Session ID copied to clipboard',
         failedToCopySessionId: 'Failed to copy Happy Session ID',
         happySessionId: 'Happy Session ID',
