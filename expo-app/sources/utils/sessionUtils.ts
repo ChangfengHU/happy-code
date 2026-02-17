@@ -105,18 +105,25 @@ export function getSessionModelName(session: Session): string | null {
  */
 export function getSessionName(session: Session, options?: { withModelPrefix?: boolean }): string {
     const modelName = options?.withModelPrefix ? getSessionModelName(session) : null;
-    const baseName = session.metadata?.summary
-        ? session.metadata.summary.text
-        : session.metadata
-            ? (() => {
-                const segments = session.metadata!.path.split('/').filter(Boolean);
-                const lastSegment = segments.pop();
-                if (!lastSegment) {
-                    return t('status.unknown');
-                }
-                return lastSegment;
-            })()
-            : t('status.unknown');
+
+    // Priority: 
+    // 1. Manually set name (metadata.name)
+    // 2. AI generated summary (metadata.summary.text)
+    // 3. Last segment of the path
+    const baseName = session.metadata?.name
+        ? session.metadata.name
+        : session.metadata?.summary
+            ? session.metadata.summary.text
+            : session.metadata
+                ? (() => {
+                    const segments = session.metadata!.path.split('/').filter(Boolean);
+                    const lastSegment = segments.pop();
+                    if (!lastSegment) {
+                        return t('status.unknown');
+                    }
+                    return lastSegment;
+                })()
+                : t('status.unknown');
 
     if (modelName) {
         return `[${modelName}] ${baseName}`;
@@ -144,11 +151,11 @@ export function getSessionAvatarId(session: Session): string {
  */
 export function formatPathRelativeToHome(path: string, homeDir?: string): string {
     if (!homeDir) return path;
-    
+
     // Normalize paths to handle trailing slashes
     const normalizedHome = homeDir.endsWith('/') ? homeDir.slice(0, -1) : homeDir;
     const normalizedPath = path;
-    
+
     // Check if path starts with home directory
     if (normalizedPath.startsWith(normalizedHome)) {
         // Replace home directory with ~
@@ -162,7 +169,7 @@ export function formatPathRelativeToHome(path: string, homeDir?: string): string
             return '~/' + relativePath;
         }
     }
-    
+
     return path;
 }
 

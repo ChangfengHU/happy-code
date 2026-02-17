@@ -471,7 +471,8 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
         if (timeSinceLastClick < DOUBLE_CLICK_DELAY) {
             // Double click detected
-            const currentName = session.metadata?.name || '';
+            // Get the current display name (excluding model prefix) as initial value
+            const currentName = getSessionName(session, { withModelPrefix: false });
             setEditingName(currentName);
             setIsRenaming(true);
             // Focus input after state update
@@ -483,11 +484,12 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
             // Single click - let it propagate to navigation
             lastClickTimeRef.current = now;
         }
-    }, [isWeb, session.metadata?.name]);
+    }, [isWeb, session]);
 
     // Handle rename save
     const handleRenameSave = React.useCallback(async () => {
-        if (editingName === (session.metadata?.name || '')) {
+        const currentName = getSessionName(session, { withModelPrefix: false });
+        if (editingName === currentName) {
             setIsRenaming(false);
             return;
         }
@@ -534,8 +536,9 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     // Handle rename cancel
     const handleRenameCancel = React.useCallback(() => {
         setIsRenaming(false);
-        setEditingName(session.metadata?.name || '');
-    }, [session.metadata?.name]);
+        const currentName = getSessionName(session, { withModelPrefix: false });
+        setEditingName(currentName);
+    }, [session]);
 
     // Handle key press in input
     const handleKeyPress = React.useCallback((e: any) => {

@@ -529,7 +529,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
 
         if (timeSinceLastClick < DOUBLE_CLICK_DELAY) {
             // Double click detected
-            const currentName = session.metadata?.name || '';
+            const currentName = getSessionName(session, { withModelPrefix: false });
             setEditingName(currentName);
             setIsRenaming(true);
             // Focus input after state update
@@ -541,11 +541,12 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             // Single click - let it propagate to navigation
             lastClickTimeRef.current = now;
         }
-    }, [isWeb, session.metadata?.name]);
+    }, [isWeb, session]);
 
     // Handle rename save
     const handleRenameSave = React.useCallback(async () => {
-        if (editingName === (session.metadata?.name || '')) {
+        const currentName = getSessionName(session, { withModelPrefix: false });
+        if (editingName === currentName) {
             setIsRenaming(false);
             return;
         }
@@ -592,8 +593,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     // Handle rename cancel
     const handleRenameCancel = React.useCallback(() => {
         setIsRenaming(false);
-        setEditingName(session.metadata?.name || '');
-    }, [session.metadata?.name]);
+        const currentName = getSessionName(session, { withModelPrefix: false });
+        setEditingName(currentName);
+    }, [session]);
 
     // Handle key press in input
     const handleKeyPress = React.useCallback((e: any) => {

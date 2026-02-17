@@ -377,13 +377,13 @@ export class ApiClient {
         }
         tokenData = response.data;
       }
-      
+
       // Final check: if tokenData is null or { token: null }, return null
       if (tokenData === null || (tokenData && typeof tokenData === 'object' && tokenData.token === null && Object.keys(tokenData).length === 1)) {
         logger.debug(`[API] Token data is null for ${vendor}`);
         return null;
       }
-      
+
       logger.debug(`[API] Vendor token for ${vendor} retrieved successfully`, {
         tokenDataType: typeof tokenData,
         tokenDataKeys: tokenData && typeof tokenData === 'object' ? Object.keys(tokenData) : 'not an object',

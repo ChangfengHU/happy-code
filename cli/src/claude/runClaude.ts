@@ -46,7 +46,7 @@ export interface StartOptions {
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
     logger.debug(`[CLAUDE] ===== CLAUDE MODE STARTING =====`);
     logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
-    
+
     const workingDirectory = process.cwd();
     const sessionTag = randomUUID();
 
@@ -133,7 +133,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 path: workingDirectory,
                 sessionId: null,
                 onSessionFound: (id) => { offlineSessionId = id; },
-                onThinkingChange: () => {},
+                onThinkingChange: () => { },
                 abort: new AbortController().signal,
                 claudeEnvVars: options.claudeEnvVars,
                 claudeArgs: options.claudeArgs,
@@ -193,7 +193,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {
             logger.debug(`[START] Session hook received: ${sessionId}`, data);
-            
+
             // Update session ID in the Session instance
             if (currentSession) {
                 const previousSessionId = currentSession.sessionId;
@@ -382,7 +382,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                     archivedBy: 'cli',
                     archiveReason: 'User terminated'
                 }));
-                
+
                 // Cleanup session resources (intervals, callbacks)
                 currentSession?.cleanup();
 
