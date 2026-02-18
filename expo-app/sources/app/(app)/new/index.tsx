@@ -23,7 +23,7 @@ import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import { PermissionMode, ModelMode, PermissionModeSelector, CodexReasoningEffort } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
-import { AgentInput } from '@/components/AgentInput';
+import { AgentInput, type AgentInputSendPayload } from '@/components/AgentInput';
 import { StyleSheet } from 'react-native-unistyles';
 import { randomUUID } from 'expo-crypto';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
@@ -284,7 +284,6 @@ function NewSessionWizard() {
     // Control A (false): Simpler AgentInput-driven layout
     // Variant B (true): Enhanced profile-first wizard with sections
     const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
-    const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
     const [profiles, setProfiles] = useSettingMutable('profiles');
@@ -347,18 +346,8 @@ function NewSessionWizard() {
 
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
-        // Initialize with last used permission mode if valid, otherwise default to 'default'
-        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
-
-        if (lastUsedPermissionMode) {
-            if ((agentType === 'codex' || agentType === 'gemini') && validCodexGeminiModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            }
-        }
-        return 'default';
+        // Always default to yolo-style mode for new sessions, independent of stored CLI settings.
+        return agentType === 'claude' ? 'bypassPermissions' : 'yolo';
     });
 
     // NOTE: Permission mode reset on agentType change is handled by the validation useEffect below (lines ~670-681)
@@ -416,6 +405,7 @@ function NewSessionWizard() {
         return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
     });
     const [isCreating, setIsCreating] = React.useState(false);
+    const createSessionLockRef = React.useRef(false);
     const [showAdvanced, setShowAdvanced] = React.useState(false);
 
     // Handle machineId route param from picker screens (main's navigation pattern)
@@ -723,7 +713,7 @@ function NewSessionWizard() {
         }
     }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled]);
 
-    // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
+    // Reset permission mode to yolo-style defaults when current mode is invalid for new agent
     React.useEffect(() => {
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
         const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
@@ -733,7 +723,7 @@ function NewSessionWizard() {
             : validClaudeModes.includes(permissionMode);
 
         if (!isValidForCurrentAgent) {
-            setPermissionMode('default');
+            setPermissionMode(agentType === 'claude' ? 'bypassPermissions' : 'yolo');
         }
     }, [agentType, permissionMode]);
 
@@ -1021,7 +1011,10 @@ function NewSessionWizard() {
     }, []);
 
     // Session creation
-    const handleCreateSession = React.useCallback(async () => {
+    const handleCreateSession = React.useCallback(async (payload?: AgentInputSendPayload) => {
+        if (createSessionLockRef.current || isCreating) {
+            return;
+        }
         if (!selectedMachineId) {
             Modal.alert(t('common.error'), t('newSession.noMachineSelected'));
             return;
@@ -1031,9 +1024,12 @@ function NewSessionWizard() {
             return;
         }
 
+        createSessionLockRef.current = true;
         setIsCreating(true);
 
         try {
+            const outgoingText = payload?.text ?? sessionPrompt;
+            const outgoingImages = payload?.images ?? [];
             let actualPath = selectedPath;
 
             // Handle worktree creation
@@ -1046,7 +1042,6 @@ function NewSessionWizard() {
                     } else {
                         Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
                     }
-                    setIsCreating(false);
                     return;
                 }
 
@@ -1097,9 +1092,14 @@ function NewSessionWizard() {
                     storage.getState().updateSessionCodexReasoningEffort(result.sessionId, codexReasoningEffort);
                 }
 
-                // Send initial message if provided
-                if (sessionPrompt.trim()) {
-                    await sync.sendMessage(result.sessionId, sessionPrompt);
+                // Send initial message if provided (supports text+images from AgentInput).
+                if (outgoingImages.length > 0) {
+                    await sync.sendUserInput(result.sessionId, {
+                        text: outgoingText,
+                        images: outgoingImages,
+                    });
+                } else if (outgoingText.trim()) {
+                    await sync.sendMessage(result.sessionId, outgoingText);
                 }
 
                 router.replace(`/session/${result.sessionId}`, {
@@ -1121,9 +1121,11 @@ function NewSessionWizard() {
                 }
             }
             Modal.alert(t('common.error'), errorMessage);
+        } finally {
+            createSessionLockRef.current = false;
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, codexReasoningEffort, recentMachinePaths, profileMap, router]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, codexReasoningEffort, recentMachinePaths, profileMap, router, isCreating]);
 
     const screenWidth = useWindowDimensions().width;
 
@@ -1223,6 +1225,7 @@ function NewSessionWizard() {
                                 currentPath={selectedPath}
                                 onPathClick={handlePathClick}
                                 onRefreshMachines={machines.length === 0 ? handleRefreshMachines : undefined}
+                                allowImagePaste={true}
                             />
                         </View>
                     </View>
@@ -1976,6 +1979,7 @@ function NewSessionWizard() {
                             profileId={selectedProfileId}
                             onProfileClick={handleAgentInputProfileClick}
                             onRefreshMachines={machines.length === 0 ? handleRefreshMachines : undefined}
+                            allowImagePaste={true}
                         />
                     </View>
                 </View>

@@ -28,7 +28,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const [loadingForSession, setLoadingForSession] = useState(false);
     
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
-    const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
+    const isCodex = (
+        metadata?.flavor === 'codex' ||
+        metadata?.flavor === 'gpt' ||
+        metadata?.flavor === 'openai' ||
+        toolName.startsWith('Codex')
+    );
 
     const handleApprove = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;

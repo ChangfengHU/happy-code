@@ -38,6 +38,21 @@ const resolveAgentType = (flavor?: string | null): 'claude' | 'codex' | 'gemini'
     return 'claude';
 };
 
+const supportsImagePaste = (flavor?: string | null): boolean => {
+    if (!flavor) {
+        // Session metadata can arrive slightly later than the UI render; keep paste enabled.
+        return true;
+    }
+
+    return (
+        flavor === 'claude' ||
+        flavor === 'codex' ||
+        flavor === 'gpt' ||
+        flavor === 'openai' ||
+        flavor === 'gemini'
+    );
+};
+
 export const SessionView = React.memo((props: { id: string; switchPath?: string }) => {
     const sessionId = props.id;
     const switchPath = props.switchPath;
@@ -186,7 +201,7 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
     // Get permission mode from session object, default to 'default'
     const permissionMode = session.permissionMode || 'default';
-    const isCodexSession = session.metadata?.flavor === 'codex';
+    const isCodexSession = resolveAgentType(session.metadata?.flavor) === 'codex';
     // Get model mode from session object - for Gemini sessions use explicit model, default to gemini-3-pro
     const isGeminiSession = session.metadata?.flavor === 'gemini';
     const modelMode = session.modelMode || (isGeminiSession ? 'gemini-3-pro' : 'default');
@@ -423,13 +438,31 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
                 dotColor: sessionStatus.statusDotColor,
                 isPulsing: sessionStatus.isPulsing
             }}
-            onSend={() => {
-                if (message.trim()) {
-                    setMessage('');
-                    clearDraft();
-                    sync.sendMessage(sessionId, message);
-                    trackMessageSent();
+            onSend={(payload) => {
+                const text = payload?.text ?? message;
+                const images = payload?.images ?? [];
+                if (!text.trim() && images.length === 0) {
+                    return;
                 }
+
+                setMessage('');
+                clearDraft();
+
+                if (images.length > 0) {
+                    void sync.sendUserInput(sessionId, {
+                        text,
+                        images
+                    }).catch((error) => {
+                        const message = error instanceof Error ? error.message : 'Failed to send image message';
+                        Modal.alert(t('common.error'), message);
+                    });
+                } else {
+                    void sync.sendMessage(sessionId, text).catch((error) => {
+                        const message = error instanceof Error ? error.message : t('common.error');
+                        Modal.alert(t('common.error'), message);
+                    });
+                }
+                trackMessageSent();
             }}
             onMicPress={micButtonState.onMicPress}
             isMicActive={micButtonState.isMicActive}
@@ -457,6 +490,7 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
                 contextSize: session.latestUsage.contextSize
             } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
+            allowImagePaste={supportsImagePaste(session.metadata?.flavor)}
         />
     );
 

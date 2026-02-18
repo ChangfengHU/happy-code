@@ -14,7 +14,7 @@ import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
-import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
+import { NormalizedMessage, normalizeRawMessage, RawRecord, RawUserContent, RawUserImageContent, RawUserInputPart } from './typesRaw';
 import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
@@ -40,9 +40,35 @@ import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
 
+const estimateBase64Bytes = (base64: string): number => {
+    const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+    return Math.floor((base64.length * 3) / 4) - padding;
+};
+
+const getStringByteLength = (value: string): number => {
+    const encoder = (globalThis as any).TextEncoder ? new (globalThis as any).TextEncoder() : null;
+    if (encoder) {
+        return encoder.encode(value).length;
+    }
+    return value.length;
+};
+
+interface UploadedUserImage {
+    url: string;
+    path: string;
+    mimeType: string;
+    name: string | null;
+    width: number | null;
+    height: number | null;
+    size: number;
+    thumbhash: string | null;
+}
+
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
     private static readonly SESSION_READY_TIMEOUT_MS = 10000;
+    private static readonly MAX_INLINE_IMAGE_BYTES = 350 * 1024;
+    private static readonly MAX_ENCRYPTION_RECORD_BYTES = 650 * 1024;
 
     encryption!: Encryption;
     serverID!: string;
@@ -208,6 +234,127 @@ class Sync {
 
 
     async sendMessage(sessionId: string, text: string, displayText?: string) {
+        return this.sendUserContent(sessionId, {
+            type: 'text',
+            text
+        }, displayText);
+    }
+
+    async sendUserInput(sessionId: string, input: {
+        text: string;
+        images: Array<Omit<RawUserImageContent, 'type'>>;
+        displayText?: string;
+    }) {
+        const parts: RawUserInputPart[] = [];
+        const trimmedText = input.text.trim();
+        if (trimmedText.length > 0) {
+            parts.push({
+                type: 'text',
+                text: input.text
+            });
+        }
+
+        const preparedImages = await Promise.all(
+            input.images.map((image) => this.prepareUserImageForSend(image))
+        );
+        for (const image of preparedImages) {
+            parts.push({
+                type: 'image',
+                mimeType: image.mimeType,
+                ...(image.data ? { data: image.data } : {}),
+                ...(image.url ? { url: image.url } : {}),
+                ...(image.name ? { name: image.name } : {}),
+                ...(typeof image.width === 'number' ? { width: image.width } : {}),
+                ...(typeof image.height === 'number' ? { height: image.height } : {}),
+                ...(typeof image.size === 'number' ? { size: image.size } : {}),
+            });
+        }
+
+        if (parts.length === 0) {
+            return;
+        }
+
+        const content: RawUserContent = parts.length === 1
+            ? parts[0]
+            : {
+                type: 'input',
+                parts
+            };
+
+        return this.sendUserContent(sessionId, content, input.displayText);
+    }
+
+    private async prepareUserImageForSend(image: Omit<RawUserImageContent, 'type'>): Promise<Omit<RawUserImageContent, 'type'>> {
+        const data = image.data;
+        if (typeof data !== 'string' || data.length === 0) {
+            if (!image.url) {
+                throw new Error('Image payload must include data or url.');
+            }
+            return image;
+        }
+
+        const imageBytes = estimateBase64Bytes(data);
+        if (imageBytes > Sync.MAX_INLINE_IMAGE_BYTES) {
+            throw new Error(`Image is too large for upload (max ${Math.round(Sync.MAX_INLINE_IMAGE_BYTES / 1024)}KB).`);
+        }
+
+        const uploaded = await this.uploadUserImage({ ...image, data });
+        return {
+            mimeType: uploaded.mimeType || image.mimeType,
+            url: uploaded.url,
+            ...(image.name || uploaded.name ? { name: image.name || uploaded.name || undefined } : {}),
+            ...(typeof image.width === 'number' || typeof uploaded.width === 'number' ? { width: image.width ?? uploaded.width ?? undefined } : {}),
+            ...(typeof image.height === 'number' || typeof uploaded.height === 'number' ? { height: image.height ?? uploaded.height ?? undefined } : {}),
+            ...(typeof image.size === 'number' || typeof uploaded.size === 'number' ? { size: image.size ?? uploaded.size } : {}),
+        };
+    }
+
+    private async uploadUserImage(image: Omit<RawUserImageContent, 'type'> & { data: string }): Promise<UploadedUserImage> {
+        if (!this.credentials) {
+            throw new Error('Not authenticated');
+        }
+
+        const API_ENDPOINT = getServerUrl();
+        const response = await fetch(`${API_ENDPOINT}/v1/account/images`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                data: image.data,
+                mimeType: image.mimeType,
+                ...(image.name ? { name: image.name } : {}),
+                ...(typeof image.width === 'number' ? { width: image.width } : {}),
+                ...(typeof image.height === 'number' ? { height: image.height } : {}),
+                ...(typeof image.size === 'number' ? { size: image.size } : {}),
+            }),
+        });
+
+        if (!response.ok) {
+            let errorMessage = `Failed to upload image: ${response.status}`;
+            try {
+                const errorBody = await response.json();
+                if (errorBody && typeof errorBody.error === 'string') {
+                    errorMessage = errorBody.error;
+                }
+            } catch {
+                // Ignore JSON parse failures and use status message.
+            }
+            throw new Error(errorMessage);
+        }
+
+        const payload = await response.json() as {
+            image?: UploadedUserImage;
+        };
+        if (!payload.image || typeof payload.image.url !== 'string') {
+            throw new Error('Invalid image upload response');
+        }
+
+        return payload.image;
+    }
+
+    private async sendUserContent(sessionId: string, userContent: RawUserContent, displayText?: string) {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -229,7 +376,7 @@ class Sync {
         // Read model mode - for Gemini, default to gemini-3-pro if not set
         const flavor = session.metadata?.flavor;
         const isGemini = flavor === 'gemini';
-        const isCodex = flavor === 'codex';
+        const isCodex = flavor === 'codex' || flavor === 'gpt' || flavor === 'openai';
         const modelMode = session.modelMode || (isGemini ? 'gemini-3-pro' : 'default');
 
         // Generate local ID
@@ -263,12 +410,9 @@ class Sync {
         const fallbackModel: string | null = null;
 
         // Create user message content with metadata
-        const content: RawRecord = {
+        const record: RawRecord = {
             role: 'user',
-            content: {
-                type: 'text',
-                text
-            },
+            content: userContent,
             meta: {
                 sentFrom,
                 permissionMode: permissionMode || 'default',
@@ -279,11 +423,16 @@ class Sync {
                 ...(displayText && { displayText }) // Add displayText if provided
             }
         };
-        const encryptedRawRecord = await encryption.encryptRawRecord(content);
+
+        const serialized = JSON.stringify(record);
+        if (getStringByteLength(serialized) > Sync.MAX_ENCRYPTION_RECORD_BYTES) {
+            throw new Error(`Message is too large to encrypt safely (max ${Math.round(Sync.MAX_ENCRYPTION_RECORD_BYTES / 1024)}KB).`);
+        }
+        const encryptedRawRecord = await encryption.encryptRawRecord(record);
 
         // Add to messages - normalize the raw record
         const createdAt = Date.now();
-        const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
+        const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, record);
         if (normalizedMessage) {
             this.applyMessages(sessionId, [normalizedMessage]);
         }

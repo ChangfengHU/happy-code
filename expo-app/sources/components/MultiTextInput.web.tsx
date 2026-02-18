@@ -27,6 +27,64 @@ export interface MultiTextInputHandle {
     blur: () => void;
 }
 
+export interface PastedImageFile {
+    type: string;
+    size: number;
+    name?: string;
+    [key: string]: any;
+}
+
+const DATA_URL_IMAGE_SRC_REGEX = /src=["'](data:image\/[^"']+)["']/gi;
+
+const dataUrlToFile = (dataUrl: string, index: number): File | null => {
+    const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!match) {
+        return null;
+    }
+
+    const mimeType = match[1];
+    const base64 = match[2];
+    if (!mimeType || !base64 || typeof globalThis.atob !== 'function') {
+        return null;
+    }
+
+    try {
+        const binary = globalThis.atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+
+        const extensionRaw = mimeType.split('/')[1] || 'png';
+        const extension = extensionRaw.replace(/[^a-zA-Z0-9.+-]/g, '') || 'png';
+        return new File([bytes], `pasted-image-${index}.${extension}`, { type: mimeType });
+    } catch {
+        return null;
+    }
+};
+
+const extractDataUrlImageFiles = (html: string): File[] => {
+    const files: File[] = [];
+    const seen = new Set<string>();
+    let match: RegExpExecArray | null = null;
+    let index = 0;
+
+    while ((match = DATA_URL_IMAGE_SRC_REGEX.exec(html)) !== null) {
+        const src = match[1];
+        if (!src || seen.has(src)) {
+            continue;
+        }
+        seen.add(src);
+        const file = dataUrlToFile(src, index);
+        if (file) {
+            files.push(file);
+            index += 1;
+        }
+    }
+
+    return files;
+};
+
 interface MultiTextInputProps {
     value: string;
     onChangeText: (text: string) => void;
@@ -39,6 +97,7 @@ interface MultiTextInputProps {
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
+    onPasteFiles?: (files: PastedImageFile[]) => void;
 }
 
 export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
@@ -49,7 +108,8 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         maxHeight = 120,
         onKeyPress,
         onSelectionChange,
-        onStateChange
+        onStateChange,
+        onPasteFiles
     } = props;
     
     const { theme } = useUnistyles();
@@ -140,6 +200,46 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         }
     }, [value, onSelectionChange, onStateChange]);
 
+    const handlePaste = React.useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        if (!onPasteFiles) {
+            return;
+        }
+
+        const files: PastedImageFile[] = [];
+        const clipboardItems = Array.from(event.clipboardData.items || []);
+        for (const item of clipboardItems) {
+            if (item.kind !== 'file' || !item.type.startsWith('image/')) {
+                continue;
+            }
+            const file = item.getAsFile();
+            if (file) {
+                files.push(file);
+            }
+        }
+
+        // Some browsers expose pasted images in clipboardData.files but not items.
+        if (files.length === 0 && event.clipboardData.files?.length) {
+            for (const file of Array.from(event.clipboardData.files)) {
+                if (file.type?.startsWith('image/')) {
+                    files.push(file as PastedImageFile);
+                }
+            }
+        }
+
+        // Some copy sources provide only text/html with data URLs.
+        if (files.length === 0) {
+            const html = event.clipboardData.getData('text/html');
+            if (html) {
+                files.push(...extractDataUrlImageFiles(html));
+            }
+        }
+
+        if (files.length > 0) {
+            event.preventDefault();
+            onPasteFiles(files);
+        }
+    }, [onPasteFiles]);
+
     // Imperative handle for direct control
     React.useImperativeHandle(ref, () => ({
         setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
@@ -196,6 +296,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                 onChange={handleChange}
                 onSelect={handleSelect}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 maxRows={maxRows}
                 autoCapitalize="sentences"
                 autoCorrect="on"

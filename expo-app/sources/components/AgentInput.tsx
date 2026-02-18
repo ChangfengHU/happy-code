@@ -1,9 +1,11 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
+import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable, Alert } from 'react-native';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { layout } from './layout';
-import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
+import { MultiTextInput, KeyPressEvent, PastedImageFile } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
 import { PermissionMode, ModelMode, CodexReasoningEffort } from './PermissionModeSelector';
 import { hapticsLight, hapticsError } from './haptics';
@@ -23,13 +25,28 @@ import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile } from '@/sync/profileUtils';
+import { Modal } from '@/modal';
+
+export type AgentInputImagePayload = {
+    mimeType: string;
+    data: string;
+    name?: string;
+    width?: number;
+    height?: number;
+    size?: number;
+};
+
+export type AgentInputSendPayload = {
+    text: string;
+    images: AgentInputImagePayload[];
+};
 
 interface AgentInputProps {
     value: string;
     placeholder: string;
     onChangeText: (text: string) => void;
     sessionId?: string;
-    onSend: () => void;
+    onSend: (payload?: AgentInputSendPayload) => void;
     sendIcon?: React.ReactNode;
     onMicPress?: () => void;
     isMicActive?: boolean;
@@ -76,9 +93,100 @@ interface AgentInputProps {
     profileId?: string | null;
     onProfileClick?: () => void;
     onRefreshMachines?: () => void;  // 用于手动刷新机器列表（当无设备时显示）
+    allowImagePaste?: boolean;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
+const MAX_PASTED_IMAGE_COUNT = 4;
+const MAX_PASTED_IMAGE_BYTES = 350 * 1024;
+const MAX_PASTED_IMAGE_INPUT_BYTES = 12 * 1024 * 1024;
+const MAX_PENDING_SEND_BYTES = 620 * 1024;
+
+type PendingImageAttachment = AgentInputImagePayload & {
+    id: string;
+    previewUri: string;
+};
+
+const estimateBase64Bytes = (base64: string): number => {
+    const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+    return Math.floor((base64.length * 3) / 4) - padding;
+};
+
+const getStringBytes = (value: string): number => {
+    const encoder = (globalThis as any).TextEncoder ? new (globalThis as any).TextEncoder() : null;
+    if (encoder) {
+        return encoder.encode(value).length;
+    }
+    return value.length;
+};
+
+const extractBase64FromDataUrl = (dataUrl: string): string | null => {
+    const marker = ';base64,';
+    const markerIndex = dataUrl.indexOf(marker);
+    if (markerIndex === -1) {
+        return null;
+    }
+    return dataUrl.slice(markerIndex + marker.length);
+};
+
+const compressDataUrlForSend = async (dataUrl: string): Promise<{
+    dataUrl: string;
+    mimeType: string;
+} | null> => {
+    const BrowserImage = (globalThis as any).Image;
+    const documentRef = (globalThis as any).document;
+    if (!BrowserImage || !documentRef?.createElement) {
+        return { dataUrl, mimeType: 'image/png' };
+    }
+
+    const image = await new Promise<any>((resolve, reject) => {
+        const img = new BrowserImage();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Failed to decode image'));
+        img.src = dataUrl;
+    });
+
+    const naturalWidth = image.naturalWidth || image.width;
+    const naturalHeight = image.naturalHeight || image.height;
+    if (!naturalWidth || !naturalHeight) {
+        return null;
+    }
+
+    const MAX_DIMENSION = 1600;
+    const scale = Math.min(1, MAX_DIMENSION / Math.max(naturalWidth, naturalHeight));
+    const targetWidth = Math.max(1, Math.round(naturalWidth * scale));
+    const targetHeight = Math.max(1, Math.round(naturalHeight * scale));
+
+    const canvas = documentRef.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        return null;
+    }
+
+    ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+    // Prefer JPEG for smaller payload size in encrypted transport.
+    const qualityCandidates = [0.82, 0.72, 0.62, 0.52, 0.42];
+    let bestDataUrl = canvas.toDataURL('image/jpeg', qualityCandidates[0]);
+    for (const quality of qualityCandidates) {
+        const candidate = canvas.toDataURL('image/jpeg', quality);
+        const candidateB64 = extractBase64FromDataUrl(candidate);
+        if (!candidateB64) {
+            continue;
+        }
+        bestDataUrl = candidate;
+        if (estimateBase64Bytes(candidateB64) <= MAX_PASTED_IMAGE_BYTES) {
+            break;
+        }
+    }
+
+    return {
+        dataUrl: bestDataUrl,
+        mimeType: 'image/jpeg'
+    };
+};
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -106,6 +214,37 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingRight: 8,
         paddingVertical: 4,
         minHeight: 40,
+    },
+    pastedImagesRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        paddingHorizontal: 10,
+        paddingTop: 8,
+        paddingBottom: 4,
+    },
+    pastedImageChip: {
+        width: 72,
+        height: 72,
+        borderRadius: 10,
+        overflow: 'hidden',
+        position: 'relative',
+        backgroundColor: theme.colors.surface,
+    },
+    pastedImage: {
+        width: '100%',
+        height: '100%',
+    },
+    pastedImageRemove: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: 'rgba(0, 0, 0, 0.55)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 
     // Overlay styles
@@ -300,11 +439,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
 
-    const hasText = props.value.trim().length > 0;
-
     // Check if this is a Codex or Gemini session
     // Use metadata.flavor for existing sessions, agentType prop for new sessions
-    const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
+    const isCodex = (
+        props.metadata?.flavor === 'codex' ||
+        props.metadata?.flavor === 'gpt' ||
+        props.metadata?.flavor === 'openai' ||
+        props.agentType === 'codex'
+    );
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
 
     // Profile data
@@ -361,6 +503,251 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const [isAborting, setIsAborting] = React.useState(false);
     const shakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
+    const [pendingImages, setPendingImages] = React.useState<PendingImageAttachment[]>([]);
+
+    const hasText = props.value.trim().length > 0;
+    const hasImages = pendingImages.length > 0;
+    const hasSendPayload = hasText || hasImages;
+
+    const handleRemovePastedImage = React.useCallback((imageId: string) => {
+        setPendingImages((current) => current.filter((image) => image.id !== imageId));
+    }, []);
+
+    const handlePasteFiles = React.useCallback(async (files: PastedImageFile[]) => {
+        if (!props.allowImagePaste) {
+            hapticsError();
+            return;
+        }
+        const ReaderCtor = (globalThis as any).FileReader;
+        if (!ReaderCtor) {
+            return;
+        }
+
+        const availableSlots = MAX_PASTED_IMAGE_COUNT - pendingImages.length;
+        if (availableSlots <= 0) {
+            hapticsError();
+            Modal.alert('Image limit reached', `You can attach up to ${MAX_PASTED_IMAGE_COUNT} images per message.`);
+            return;
+        }
+
+        const readAsDataUrl = (blob: PastedImageFile) => new Promise<string>((resolve, reject) => {
+            const reader = new ReaderCtor();
+            reader.onload = () => {
+                if (typeof reader.result === 'string') {
+                    resolve(reader.result);
+                    return;
+                }
+                reject(new Error('Failed to read pasted image'));
+            };
+            reader.onerror = () => reject(new Error('Failed to read pasted image'));
+            reader.readAsDataURL(blob as any);
+        });
+
+        const readImageSize = (uri: string) => new Promise<{ width: number; height: number } | null>((resolve) => {
+            RNImage.getSize(uri, (width, height) => resolve({ width, height }), () => resolve(null));
+        });
+
+        const next: PendingImageAttachment[] = [];
+        let rejectedBecauseTooLarge = false;
+        for (const file of files.slice(0, availableSlots)) {
+            if (!file.type.startsWith('image/')) {
+                continue;
+            }
+            if (file.size > MAX_PASTED_IMAGE_INPUT_BYTES) {
+                hapticsError();
+                rejectedBecauseTooLarge = true;
+                continue;
+            }
+
+            try {
+                const inputDataUrl = await readAsDataUrl(file);
+                const compressed = await compressDataUrlForSend(inputDataUrl);
+                if (!compressed) {
+                    continue;
+                }
+                const compressedBase64 = extractBase64FromDataUrl(compressed.dataUrl);
+                if (!compressedBase64) {
+                    continue;
+                }
+                const compressedBytes = estimateBase64Bytes(compressedBase64);
+                if (compressedBytes > MAX_PASTED_IMAGE_BYTES) {
+                    hapticsError();
+                    rejectedBecauseTooLarge = true;
+                    continue;
+                }
+
+                const dimensions = await readImageSize(compressed.dataUrl);
+                next.push({
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                    mimeType: compressed.mimeType,
+                    data: compressedBase64,
+                    previewUri: compressed.dataUrl,
+                    ...(typeof file.name === 'string' ? { name: file.name } : {}),
+                    ...(dimensions ? { width: dimensions.width, height: dimensions.height } : {}),
+                    size: compressedBytes
+                });
+            } catch (error) {
+                console.error('Failed to handle pasted image', error);
+            }
+        }
+
+        if (next.length > 0) {
+            setPendingImages((current) => current.concat(next).slice(0, MAX_PASTED_IMAGE_COUNT));
+            hapticsLight();
+        } else if (rejectedBecauseTooLarge) {
+            Modal.alert('Image too large', `Please use images under ${Math.round(MAX_PASTED_IMAGE_BYTES / 1024)}KB after compression.`);
+        }
+    }, [pendingImages.length, props.allowImagePaste]);
+
+    const handlePickImage = React.useCallback(async () => {
+        if (!props.allowImagePaste) {
+            hapticsError();
+            return;
+        }
+
+        // Request camera roll permissions
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert(
+                'Permission needed',
+                'Please grant camera roll permissions to attach images.'
+            );
+            return;
+        }
+
+        // Check if we can add more images
+        const availableSlots = MAX_PASTED_IMAGE_COUNT - pendingImages.length;
+        if (availableSlots <= 0) {
+            hapticsError();
+            Modal.alert('Image limit reached', `You can attach up to ${MAX_PASTED_IMAGE_COUNT} images per message.`);
+            return;
+        }
+
+        try {
+            // Launch image library
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsMultipleSelection: availableSlots > 1,
+                quality: 0.8,
+                allowsEditing: false,
+                exif: false,
+            });
+
+            if (result.canceled) {
+                return;
+            }
+
+            const selectedAssets = result.assets || [];
+            if (selectedAssets.length === 0) {
+                return;
+            }
+
+            // Process selected images
+            const next: PendingImageAttachment[] = [];
+            let rejectedBecauseTooLarge = false;
+
+            const readImageSize = (uri: string) => new Promise<{ width: number; height: number } | null>((resolve) => {
+                RNImage.getSize(uri, (width, height) => resolve({ width, height }), () => resolve(null));
+            });
+
+            for (const asset of selectedAssets.slice(0, availableSlots)) {
+                if (!asset.uri) {
+                    continue;
+                }
+
+                try {
+                    // Get file info to check size
+                    const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+
+                    // Check file size
+                    if (fileInfo.exists && 'size' in fileInfo && fileInfo.size && fileInfo.size > MAX_PASTED_IMAGE_INPUT_BYTES) {
+                        hapticsError();
+                        rejectedBecauseTooLarge = true;
+                        continue;
+                    }
+
+                    // Compress image
+                    const compressed = await compressDataUrlForSend(asset.uri);
+                    if (!compressed) {
+                        continue;
+                    }
+
+                    const compressedBase64 = extractBase64FromDataUrl(compressed.dataUrl);
+                    if (!compressedBase64) {
+                        continue;
+                    }
+
+                    const compressedBytes = estimateBase64Bytes(compressedBase64);
+                    if (compressedBytes > MAX_PASTED_IMAGE_BYTES) {
+                        hapticsError();
+                        rejectedBecauseTooLarge = true;
+                        continue;
+                    }
+
+                    const dimensions = await readImageSize(compressed.dataUrl);
+                    next.push({
+                        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                        mimeType: compressed.mimeType,
+                        data: compressedBase64,
+                        previewUri: compressed.dataUrl,
+                        name: asset.fileName || undefined,
+                        ...(dimensions ? { width: dimensions.width, height: dimensions.height } : {}),
+                        size: compressedBytes
+                    });
+                } catch (error) {
+                    console.error('Failed to handle picked image', error);
+                }
+            }
+
+            if (next.length > 0) {
+                setPendingImages((current) => current.concat(next).slice(0, MAX_PASTED_IMAGE_COUNT));
+                hapticsLight();
+            } else if (rejectedBecauseTooLarge) {
+                Modal.alert('Image too large', `Please use images under ${Math.round(MAX_PASTED_IMAGE_BYTES / 1024)}KB after compression.`);
+            }
+        } catch (error) {
+            console.error('Failed to pick image', error);
+            hapticsError();
+        }
+    }, [pendingImages.length, props.allowImagePaste]);
+
+    const sendCurrentPayload = React.useCallback(() => {
+        if (!hasSendPayload) {
+            return;
+        }
+
+        const imageBytes = pendingImages.reduce((sum, image) => {
+            if (typeof image.size === 'number') {
+                return sum + image.size;
+            }
+            return sum + estimateBase64Bytes(image.data);
+        }, 0);
+        const totalBytes = imageBytes + getStringBytes(props.value);
+        if (totalBytes > MAX_PENDING_SEND_BYTES) {
+            hapticsError();
+            Modal.alert('Message too large', `Please reduce image count/size (max ${Math.round(MAX_PENDING_SEND_BYTES / 1024)}KB per message).`);
+            return;
+        }
+
+        props.onSend({
+            text: props.value,
+            images: pendingImages.map((image) => ({
+                mimeType: image.mimeType,
+                data: image.data,
+                ...(image.name ? { name: image.name } : {}),
+                ...(typeof image.width === 'number' ? { width: image.width } : {}),
+                ...(typeof image.height === 'number' ? { height: image.height } : {}),
+                ...(typeof image.size === 'number' ? { size: image.size } : {}),
+            }))
+        });
+        setPendingImages([]);
+    }, [hasSendPayload, pendingImages, props.onSend, props.value]);
+
+    React.useEffect(() => {
+        if (!props.allowImagePaste && pendingImages.length > 0) {
+            setPendingImages([]);
+        }
+    }, [props.allowImagePaste, pendingImages.length]);
 
     // Forward ref to the MultiTextInput
     React.useImperativeHandle(ref, () => inputRef.current!, []);
@@ -501,8 +888,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         // Original key handling
         if (Platform.OS === 'web') {
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey) {
-                if (props.value.trim()) {
-                    props.onSend();
+                if (hasSendPayload) {
+                    sendCurrentPayload();
                     return true; // Key was handled
                 }
             }
@@ -520,7 +907,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, hasSendPayload, sendCurrentPayload, props.permissionMode, props.onPermissionModeChange]);
 
 
 
@@ -1214,6 +1601,27 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                 {/* Box 2: Action Area (Input + Send) */}
                 <View style={styles.unifiedPanel}>
+                    {!!pendingImages.length && (
+                        <View style={styles.pastedImagesRow}>
+                            {pendingImages.map((image) => (
+                                <View key={image.id} style={styles.pastedImageChip}>
+                                    <RNImage
+                                        source={{ uri: image.previewUri }}
+                                        style={styles.pastedImage}
+                                        resizeMode="cover"
+                                    />
+                                    <Pressable
+                                        onPress={() => handleRemovePastedImage(image.id)}
+                                        style={styles.pastedImageRemove}
+                                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    >
+                                        <Ionicons name="close" size={12} color="#fff" />
+                                    </Pressable>
+                                </View>
+                            ))}
+                        </View>
+                    )}
+
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <MultiTextInput
@@ -1225,6 +1633,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             placeholder={props.placeholder}
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
+                            onPasteFiles={handlePasteFiles}
                             maxHeight={120}
                         />
                     </View>
@@ -1235,6 +1644,30 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                 <View style={styles.actionButtonsLeft}>
+
+                                    {/* Image upload button */}
+                                    {props.allowImagePaste && (
+                                        <Pressable
+                                            onPress={handlePickImage}
+                                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                            style={(p) => ({
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                borderRadius: Platform.select({ default: 16, android: 20 }),
+                                                paddingHorizontal: 8,
+                                                paddingVertical: 6,
+                                                justifyContent: 'center',
+                                                height: 32,
+                                                opacity: p.pressed ? 0.7 : 1,
+                                            })}
+                                        >
+                                            <Ionicons
+                                                name={'image-outline'}
+                                                size={16}
+                                                color={theme.colors.button.secondary.tint}
+                                            />
+                                        </Pressable>
+                                    )}
 
                                     {/* Settings button */}
                                     {props.onPermissionModeChange && (
@@ -1374,7 +1807,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 <View
                                     style={[
                                         styles.sendButton,
-                                        (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
+                                        (hasSendPayload || props.isSending || (props.onMicPress && !props.isMicActive))
                                             ? styles.sendButtonActive
                                             : styles.sendButtonInactive
                                     ]}
@@ -1390,20 +1823,20 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                         onPress={() => {
                                             hapticsLight();
-                                            if (hasText) {
-                                                props.onSend();
+                                            if (hasSendPayload) {
+                                                sendCurrentPayload();
                                             } else {
                                                 props.onMicPress?.();
                                             }
                                         }}
-                                        disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
+                                        disabled={props.isSendDisabled || props.isSending || (!hasSendPayload && !props.onMicPress)}
                                     >
                                         {props.isSending ? (
                                             <ActivityIndicator
                                                 size="small"
                                                 color={theme.colors.button.primary.tint}
                                             />
-                                        ) : hasText ? (
+                                        ) : hasSendPayload ? (
                                             <Octicons
                                                 name="arrow-up"
                                                 size={16}

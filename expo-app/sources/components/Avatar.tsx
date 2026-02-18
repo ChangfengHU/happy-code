@@ -24,6 +24,16 @@ const flavorIcons = {
     gemini: require('@/assets/images/icon-gemini.png'),
 };
 
+const resolveFlavor = (flavor?: string | null): keyof typeof flavorIcons => {
+    if (flavor === 'codex' || flavor === 'gpt' || flavor === 'openai') {
+        return 'codex';
+    }
+    if (flavor === 'gemini') {
+        return 'gemini';
+    }
+    return 'claude';
+};
+
 const styles = StyleSheet.create((theme) => ({
     container: {
         position: 'relative',
@@ -66,8 +76,8 @@ export const Avatar = React.memo((props: AvatarProps) => {
 
         // Add flavor icon overlay if enabled
         if (showFlavorIcons && flavor) {
-            const effectiveFlavor = flavor || 'claude';
-            const flavorIcon = flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
+            const effectiveFlavor = resolveFlavor(flavor);
+            const flavorIcon = flavorIcons[effectiveFlavor] || flavorIcons.claude;
             const circleSize = Math.round(size * 0.35);
             const iconSize = effectiveFlavor === 'codex'
                 ? Math.round(size * 0.25)
@@ -110,8 +120,8 @@ export const Avatar = React.memo((props: AvatarProps) => {
     }
 
     // Determine flavor icon for generated avatars
-    const effectiveFlavor = flavor || 'claude';
-    const flavorIcon = flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
+    const effectiveFlavor = resolveFlavor(flavor);
+    const flavorIcon = flavorIcons[effectiveFlavor] || flavorIcons.claude;
     // Make icons smaller while keeping same circle size
     // Claude slightly bigger than codex
     const circleSize = Math.round(size * 0.35);
