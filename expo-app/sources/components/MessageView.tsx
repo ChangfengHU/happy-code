@@ -1,5 +1,5 @@
 import * as React from "react";
-import { View, Text } from "react-native";
+import { View, Text, Image as RNImage } from "react-native";
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
@@ -76,7 +76,27 @@ function UserTextBlock(props: {
   return (
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
-        <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
+        {!!(props.message.displayText || props.message.text).trim() && (
+          <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
+        )}
+        {!!props.message.images?.length && (
+          <View style={styles.userImageList}>
+            {props.message.images.map((image, index) => {
+              const uri = image.url || (image.data ? `data:${image.mimeType};base64,${image.data}` : null);
+              if (!uri) {
+                return null;
+              }
+              return (
+                <RNImage
+                  key={`${props.message.id}-${index}`}
+                  source={{ uri }}
+                  style={styles.userImage}
+                  resizeMode="cover"
+                />
+              );
+            })}
+          </View>
+        )}
         {/* {__DEV__ && (
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
@@ -196,6 +216,18 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 12,
     marginBottom: 12,
     maxWidth: '100%',
+  },
+  userImageList: {
+    flexDirection: 'column',
+    gap: 8,
+    marginVertical: 8,
+  },
+  userImage: {
+    width: 220,
+    maxWidth: '100%',
+    height: 220,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surface,
   },
   agentMessageContainer: {
     marginHorizontal: 16,

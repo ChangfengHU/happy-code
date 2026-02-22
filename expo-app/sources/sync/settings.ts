@@ -345,7 +345,7 @@ export const settingsDefaults: Settings = {
     preferredLanguage: null,
     recentMachinePaths: [],
     lastUsedAgent: null,
-    lastUsedPermissionMode: null,
+    lastUsedPermissionMode: 'yolo',
     lastUsedModelMode: null,
     // Profile management defaults
     profiles: [],

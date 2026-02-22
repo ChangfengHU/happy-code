@@ -225,14 +225,14 @@ export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5-codex"`,
                     },
                     {
                         name: 'GEMINI_MODEL',
-                        expectedValue: 'gemini-3-pro',
+                        expectedValue: 'gemini-2.5-pro',
                         description: 'Default model version',
                         isSecret: false,
                     },
                 ],
                 shellConfigExample: `# Add to ~/.zshrc or ~/.bashrc:
 export GEMINI_API_KEY="AIza..."
-export GEMINI_MODEL="gemini-3-pro"`,
+export GEMINI_MODEL="gemini-2.5-pro"`,
             };
         default:
             return null;
@@ -368,7 +368,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                 anthropicConfig: {},
                 environmentVariables: [
                     { name: 'GEMINI_API_KEY', value: '' },
-                    { name: 'GEMINI_MODEL', value: 'gemini-3-pro' },
+                    { name: 'GEMINI_MODEL', value: 'gemini-2.5-pro' },
                 ],
                 compatibility: { claude: false, codex: false, gemini: true },
                 isBuiltIn: true,

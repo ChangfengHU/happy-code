@@ -54,6 +54,65 @@ describe('reducer', () => {
             expect(state.localIds.has('local123')).toBe(true);
         });
 
+        it('should keep user image attachments for rendering', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'msg-image',
+                    localId: 'local-image',
+                    createdAt: 1001,
+                    role: 'user',
+                    content: {
+                        type: 'input',
+                        parts: [
+                            { type: 'text', text: '请看图' },
+                            {
+                                type: 'image',
+                                mimeType: 'image/png',
+                                data: 'ZmFrZS1pbWFnZS1iYXNlNjQ='
+                            }
+                        ]
+                    },
+                    isSidechain: false
+                }
+            ];
+
+            const result = reducer(state, messages);
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('user-text');
+            if (result.messages[0].kind === 'user-text') {
+                expect(result.messages[0].text).toBe('请看图');
+                expect(result.messages[0].images?.length).toBe(1);
+                expect(result.messages[0].images?.[0].mimeType).toBe('image/png');
+            }
+        });
+
+        it('should support image-only user messages', () => {
+            const state = createReducer();
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'msg-image-only',
+                    localId: 'local-image-only',
+                    createdAt: 1002,
+                    role: 'user',
+                    content: {
+                        type: 'image',
+                        mimeType: 'image/jpeg',
+                        data: 'dGVzdA=='
+                    },
+                    isSidechain: false
+                }
+            ];
+
+            const result = reducer(state, messages);
+            expect(result.messages).toHaveLength(1);
+            expect(result.messages[0].kind).toBe('user-text');
+            if (result.messages[0].kind === 'user-text') {
+                expect(result.messages[0].text).toBe('');
+                expect(result.messages[0].images?.length).toBe(1);
+            }
+        });
+
         it('should deduplicate user messages by localId', () => {
             const state = createReducer();
             

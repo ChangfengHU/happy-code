@@ -91,10 +91,17 @@ export class PermissionHandler {
             if (response.approved) {
                 logger.debug('Plan approved - injecting PLAN_FAKE_RESTART');
                 // Inject the approval message at the beginning of the queue
+                const restartMessage = {
+                    text: PLAN_FAKE_RESTART,
+                    content: {
+                        type: 'text' as const,
+                        text: PLAN_FAKE_RESTART
+                    }
+                };
                 if (response.mode && ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode)) {
-                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: response.mode });
+                    this.session.queue.unshift(restartMessage, { permissionMode: response.mode });
                 } else {
-                    this.session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: 'default' });
+                    this.session.queue.unshift(restartMessage, { permissionMode: 'default' });
                 }
                 pending.resolve({ behavior: 'deny', message: PLAN_FAKE_REJECT });
             } else {

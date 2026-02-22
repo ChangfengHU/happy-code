@@ -948,7 +948,9 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             expect(result.success).toBe(true);
             if (result.success && result.data.role === 'user') {
                 expect(result.data.content.type).toBe('text');
-                expect(result.data.content.text).toBe('User input message');
+                if (result.data.content.type === 'text') {
+                    expect(result.data.content.text).toBe('User input message');
+                }
             }
         });
     });
@@ -1485,6 +1487,66 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                     // Verify unknown fields preserved through transformation
                     expect((toolCallItem as any).executionMetadata).toEqual({ server: 'remote' });
                     expect((toolCallItem as any).timestamp).toBe(1234567890);
+                }
+            }
+        });
+    });
+
+    describe('User multimodal content', () => {
+        it('accepts user image content for raw user records', () => {
+            const result = RawRecordSchema.safeParse({
+                role: 'user',
+                content: {
+                    type: 'image',
+                    mimeType: 'image/png',
+                    data: 'ZmFrZS1pbWFnZS1iYXNlNjQ=',
+                    width: 120,
+                    height: 80
+                }
+            });
+
+            expect(result.success).toBe(true);
+            if (result.success) {
+                expect(result.data.content.type).toBe('image');
+            }
+        });
+
+        it('normalizes Claude user image blocks to user multimodal message', () => {
+            const normalized = normalizeRawMessage('msg-image', null, Date.now(), {
+                role: 'agent',
+                content: {
+                    type: 'output',
+                    data: {
+                        type: 'user',
+                        uuid: 'u1',
+                        message: {
+                            role: 'user',
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: 'look at this'
+                                },
+                                {
+                                    type: 'image',
+                                    source: {
+                                        type: 'base64',
+                                        media_type: 'image/png',
+                                        data: 'ZmFrZS1pbWFnZS1iYXNlNjQ='
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            } as any);
+
+            expect(normalized).toBeTruthy();
+            if (normalized && normalized.role === 'user') {
+                expect(normalized.content.type).toBe('input');
+                if (normalized.content.type === 'input') {
+                    expect(normalized.content.parts.length).toBe(2);
+                    expect(normalized.content.parts[0].type).toBe('text');
+                    expect(normalized.content.parts[1].type).toBe('image');
                 }
             }
         });

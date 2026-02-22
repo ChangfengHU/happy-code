@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
-import { AgentState, Metadata } from '@/api/types';
+import { AgentState, Metadata, UserContent, UserInputPart, getUserContentText, userContentHasImage } from '@/api/types';
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
@@ -41,6 +41,51 @@ export interface StartOptions {
     startedBy?: 'daemon' | 'terminal'
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
+}
+
+export type QueuedClaudeUserMessage = {
+    text: string;
+    content: UserContent;
+}
+
+function userContentToParts(content: UserContent): UserInputPart[] {
+    if (content.type === 'input') {
+        return content.parts;
+    }
+    return [content];
+}
+
+function collapsePartsToUserContent(parts: UserInputPart[]): UserContent {
+    if (parts.length === 1) {
+        return parts[0];
+    }
+    return {
+        type: 'input',
+        parts,
+    };
+}
+
+function combineQueuedClaudeUserMessages(messages: QueuedClaudeUserMessage[]): QueuedClaudeUserMessage {
+    if (messages.length === 1) {
+        return messages[0];
+    }
+
+    const parts: UserInputPart[] = [];
+    for (let i = 0; i < messages.length; i++) {
+        const messageParts = userContentToParts(messages[i].content);
+        if (i > 0) {
+            parts.push({
+                type: 'text',
+                text: '\n',
+            });
+        }
+        parts.push(...messageParts);
+    }
+
+    return {
+        text: messages.map((message) => message.text).filter(Boolean).join('\n'),
+        content: collapsePartsToUserContent(parts),
+    };
 }
 
 export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
@@ -228,7 +273,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }
 
     // Import MessageQueue2 and create message queue
-    const messageQueue = new MessageQueue2<EnhancedMode>(mode => hashObject({
+    const messageQueue = new MessageQueue2<EnhancedMode, QueuedClaudeUserMessage>(mode => hashObject({
         isPlan: mode.permissionMode === 'plan',
         model: mode.model,
         fallbackModel: mode.fallbackModel,
@@ -236,7 +281,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         appendSystemPrompt: mode.appendSystemPrompt,
         allowedTools: mode.allowedTools,
         disallowedTools: mode.disallowedTools
-    }));
+    }), null, combineQueuedClaudeUserMessages);
 
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
@@ -319,10 +364,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
         }
 
-        // Check for special commands before processing
-        const specialCommand = parseSpecialCommand(message.content.text);
+        const messageText = getUserContentText(message.content);
+        const includesImage = userContentHasImage(message.content);
 
-        if (specialCommand.type === 'compact') {
+        // Check for special commands before processing.
+        // Commands only apply to plain text messages.
+        const specialCommand = parseSpecialCommand(messageText);
+
+        if (!includesImage && specialCommand.type === 'compact') {
             logger.debug('[start] Detected /compact command');
             const enhancedMode: EnhancedMode = {
                 permissionMode: messagePermissionMode || 'default',
@@ -333,12 +382,19 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 allowedTools: messageAllowedTools,
                 disallowedTools: messageDisallowedTools
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            const specialText = specialCommand.originalMessage || messageText;
+            messageQueue.pushIsolateAndClear({
+                text: specialText,
+                content: {
+                    type: 'text',
+                    text: specialText
+                }
+            }, enhancedMode);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
 
-        if (specialCommand.type === 'clear') {
+        if (!includesImage && specialCommand.type === 'clear') {
             logger.debug('[start] Detected /clear command');
             const enhancedMode: EnhancedMode = {
                 permissionMode: messagePermissionMode || 'default',
@@ -349,7 +405,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 allowedTools: messageAllowedTools,
                 disallowedTools: messageDisallowedTools
             };
-            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            const specialText = specialCommand.originalMessage || messageText;
+            messageQueue.pushIsolateAndClear({
+                text: specialText,
+                content: {
+                    type: 'text',
+                    text: specialText
+                }
+            }, enhancedMode);
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
@@ -364,7 +427,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             allowedTools: messageAllowedTools,
             disallowedTools: messageDisallowedTools
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        messageQueue.push({
+            text: messageText,
+            content: message.content
+        }, enhancedMode);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 

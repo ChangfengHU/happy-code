@@ -26,6 +26,13 @@ export interface MultiTextInputHandle {
     blur: () => void;
 }
 
+export interface PastedImageFile {
+    type: string;
+    size: number;
+    name?: string;
+    [key: string]: any;
+}
+
 interface MultiTextInputProps {
     value: string;
     onChangeText: (text: string) => void;
@@ -38,6 +45,7 @@ interface MultiTextInputProps {
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
+    onPasteFiles?: (files: PastedImageFile[]) => void;
 }
 
 export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {

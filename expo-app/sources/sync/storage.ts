@@ -11,8 +11,8 @@ import { Purchases, customerInfoToPurchases } from "./purchases";
 import { TodoState } from "../-zen/model/ops";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
-import type { PermissionMode } from '@/components/PermissionModeSelector';
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes, loadSessionCodexReasoningEfforts, saveSessionCodexReasoningEfforts } from "./persistence";
+import type { PermissionMode, CodexReasoningEffort } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -117,7 +117,7 @@ interface StorageState {
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
-    updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-3-pro' | 'gemini-3-flash' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'gpt-5.3-codex' | 'gpt-5.2-codex' | 'gpt-5.2' | 'gpt-5.1-codex-max' | 'gpt-5.1-codex-mini') => void;
+    updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'gpt-5.3-codex' | 'gpt-5.2-codex' | 'gpt-5.2' | 'gpt-5.1-codex-max' | 'gpt-5.1-codex-mini') => void;
     updateSessionCodexReasoningEffort: (sessionId: string, effort: 'low' | 'medium' | 'high' | 'xhigh') => void;
     copySessionMessagesForReactivation: (sourceSessionId: string, targetSessionId: string) => void;
     // Artifact methods
@@ -252,6 +252,7 @@ export const storage = create<StorageState>()((set, get) => {
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
+    let sessionCodexReasoningEfforts = loadSessionCodexReasoningEfforts();
     return {
         settings,
         settingsVersion: version,
@@ -305,6 +306,7 @@ export const storage = create<StorageState>()((set, get) => {
             // Load drafts and permission modes if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
             const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+            const savedCodexReasoningEfforts = Object.keys(state.sessions).length === 0 ? sessionCodexReasoningEfforts : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -321,13 +323,14 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedPermissionMode = savedPermissionModes[session.id];
                 const existingModelMode = state.sessions[session.id]?.modelMode;
                 const existingCodexReasoningEffort = state.sessions[session.id]?.codexReasoningEffort;
+                const savedCodexReasoningEffort = savedCodexReasoningEfforts[session.id];
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
+                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'yolo',
                     modelMode: existingModelMode || session.modelMode || null,
-                    codexReasoningEffort: existingCodexReasoningEffort || session.codexReasoningEffort || null,
+                    codexReasoningEffort: existingCodexReasoningEffort || savedCodexReasoningEffort || session.codexReasoningEffort || null,
                 };
             });
 
@@ -814,7 +817,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: updatedSessions
             };
         }),
-        updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-3-pro' | 'gemini-3-flash' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'gpt-5.3-codex' | 'gpt-5.2-codex' | 'gpt-5.2' | 'gpt-5.1-codex-max' | 'gpt-5.1-codex-mini') => set((state) => {
+        updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'gpt-5.3-codex' | 'gpt-5.2-codex' | 'gpt-5.2' | 'gpt-5.1-codex-max' | 'gpt-5.1-codex-mini') => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
 
@@ -844,6 +847,15 @@ export const storage = create<StorageState>()((set, get) => {
                     codexReasoningEffort: effort
                 }
             };
+
+            const allEfforts: Record<string, CodexReasoningEffort> = {};
+            Object.entries(updatedSessions).forEach(([id, sess]) => {
+                if (sess.codexReasoningEffort && sess.codexReasoningEffort !== 'xhigh') {
+                    allEfforts[id] = sess.codexReasoningEffort;
+                }
+            });
+
+            saveSessionCodexReasoningEfforts(allEfforts);
 
             return {
                 ...state,

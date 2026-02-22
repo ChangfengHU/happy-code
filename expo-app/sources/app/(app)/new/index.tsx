@@ -358,20 +358,19 @@ function NewSessionWizard() {
         const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'];
         const validCodexModes: ModelMode[] = ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'];
         // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-        const validGeminiModes: ModelMode[] = ['gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+        const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
         if (lastUsedModelMode) {
             if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
                 return lastUsedModelMode as ModelMode;
             } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedModelMode as ModelMode)) {
                 return lastUsedModelMode as ModelMode;
-            } else if (agentType === 'gemini' && validGeminiModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
             }
+            // For Gemini, always use gemini-2.5-pro as default, ignoring lastUsedModelMode
         }
-        return agentType === 'codex' ? 'gpt-5.3-codex' : agentType === 'gemini' ? 'gemini-3-pro' : 'default';
+        return agentType === 'codex' ? 'gpt-5.3-codex' : agentType === 'gemini' ? 'gemini-2.5-pro' : 'default';
     });
-    const [codexReasoningEffort, setCodexReasoningEffort] = React.useState<CodexReasoningEffort>('medium');
+    const [codexReasoningEffort, setCodexReasoningEffort] = React.useState<CodexReasoningEffort>('xhigh');
 
     // Session details state
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
@@ -716,7 +715,7 @@ function NewSessionWizard() {
     // Reset permission mode to yolo-style defaults when current mode is invalid for new agent
     React.useEffect(() => {
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+        const validCodexGeminiModes: PermissionMode[] = ['yolo'];
 
         const isValidForCurrentAgent = (agentType === 'codex' || agentType === 'gemini')
             ? validCodexGeminiModes.includes(permissionMode)
@@ -732,7 +731,7 @@ function NewSessionWizard() {
         const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'];
         const validCodexModes: ModelMode[] = ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'];
         // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-        const validGeminiModes: ModelMode[] = ['gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+        const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
         let isValidForCurrentAgent = false;
         if (agentType === 'codex') {
@@ -748,7 +747,7 @@ function NewSessionWizard() {
             if (agentType === 'codex') {
                 setModelMode('gpt-5.3-codex');
             } else if (agentType === 'gemini') {
-                setModelMode('gemini-3-pro');
+                setModelMode('gemini-2.5-pro');
             } else {
                 setModelMode('claude-3-5-sonnet-20241022');
             }
@@ -1876,11 +1875,8 @@ function NewSessionWizard() {
                                     <Text style={styles.sectionHeader}>4. Permission Mode</Text>
                                 </View>
                                 <ItemGroup title="">
-                                    {(agentType === 'codex'
+                                    {((agentType === 'codex' || agentType === 'gemini')
                                         ? [
-                                            { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                            { value: 'read-only' as PermissionMode, label: 'Read Only', description: 'Read-only mode', icon: 'eye-outline' },
-                                            { value: 'safe-yolo' as PermissionMode, label: 'Safe YOLO', description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
                                             { value: 'yolo' as PermissionMode, label: 'YOLO', description: 'Full access, skip permissions', icon: 'flash-outline' },
                                         ]
                                         : [

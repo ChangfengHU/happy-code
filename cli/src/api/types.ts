@@ -273,17 +273,85 @@ export const CreateSessionResponseSchema = z.object({
 
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>
 
+export const UserTextContentSchema = z.object({
+  type: z.literal('text'),
+  text: z.string()
+})
+
+export const UserImageContentSchema = z.object({
+  type: z.literal('image'),
+  mimeType: z.string(),
+  data: z.string().optional(),
+  url: z.string().optional(),
+  name: z.string().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  size: z.number().optional(),
+})
+
+export const UserInputPartSchema = z.discriminatedUnion('type', [
+  UserTextContentSchema,
+  UserImageContentSchema
+])
+
+export const UserInputContentSchema = z.object({
+  type: z.literal('input'),
+  parts: z.array(UserInputPartSchema).min(1)
+})
+
+export const UserContentSchema = z.discriminatedUnion('type', [
+  UserTextContentSchema,
+  UserImageContentSchema,
+  UserInputContentSchema
+])
+
+export type UserTextContent = z.infer<typeof UserTextContentSchema>
+export type UserImageContent = z.infer<typeof UserImageContentSchema>
+export type UserInputPart = z.infer<typeof UserInputPartSchema>
+export type UserContent = z.infer<typeof UserContentSchema>
+
 export const UserMessageSchema = z.object({
   role: z.literal('user'),
-  content: z.object({
-    type: z.literal('text'),
-    text: z.string()
-  }),
+  content: UserContentSchema,
   localKey: z.string().optional(), // Mobile messages include this
   meta: MessageMetaSchema.optional()
 })
 
 export type UserMessage = z.infer<typeof UserMessageSchema>
+
+export function getUserContentText(content: UserContent): string {
+  if (content.type === 'text') {
+    return content.text
+  }
+  if (content.type === 'image') {
+    return ''
+  }
+  return content.parts
+    .filter((part: UserInputPart): part is UserTextContent => part.type === 'text')
+    .map((part: UserTextContent) => part.text)
+    .join('\n')
+}
+
+export function getUserContentImages(content: UserContent): UserImageContent[] {
+  if (content.type === 'image') {
+    return [content]
+  }
+  if (content.type === 'text') {
+    return []
+  }
+  return content.parts
+    .filter((part: UserInputPart): part is UserImageContent => part.type === 'image')
+}
+
+export function userContentHasImage(content: UserContent): boolean {
+  if (content.type === 'image') {
+    return true
+  }
+  if (content.type === 'text') {
+    return false
+  }
+  return content.parts.some((part: UserInputPart) => part.type === 'image')
+}
 
 export const AgentMessageSchema = z.object({
   role: z.literal('agent'),

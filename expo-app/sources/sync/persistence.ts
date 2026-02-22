@@ -3,7 +3,7 @@ import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './set
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
-import type { PermissionMode } from '@/components/PermissionModeSelector';
+import type { PermissionMode, CodexReasoningEffort } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
@@ -186,6 +186,23 @@ export function loadSessionPermissionModes(): Record<string, PermissionMode> {
 
 export function saveSessionPermissionModes(modes: Record<string, PermissionMode>) {
     mmkv.set('session-permission-modes', JSON.stringify(modes));
+}
+
+export function loadSessionCodexReasoningEfforts(): Record<string, CodexReasoningEffort> {
+    const efforts = mmkv.getString('session-codex-reasoning-efforts');
+    if (efforts) {
+        try {
+            return JSON.parse(efforts);
+        } catch (e) {
+            console.error('Failed to parse session codex reasoning efforts', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionCodexReasoningEfforts(efforts: Record<string, CodexReasoningEffort>) {
+    mmkv.set('session-codex-reasoning-efforts', JSON.stringify(efforts));
 }
 
 export function loadProfile(): Profile {

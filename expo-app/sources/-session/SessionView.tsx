@@ -200,12 +200,13 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
     const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
     // Get permission mode from session object, default to 'default'
-    const permissionMode = session.permissionMode || 'default';
-    const isCodexSession = resolveAgentType(session.metadata?.flavor) === 'codex';
-    // Get model mode from session object - for Gemini sessions use explicit model, default to gemini-3-pro
-    const isGeminiSession = session.metadata?.flavor === 'gemini';
-    const modelMode = session.modelMode || (isGeminiSession ? 'gemini-3-pro' : 'default');
-    const codexReasoningEffort = session.codexReasoningEffort || 'medium';
+    const permissionMode = session.permissionMode || 'yolo';
+    const resolvedAgentType = resolveAgentType(session.metadata?.flavor);
+    const isCodexSession = resolvedAgentType === 'codex';
+    // Get model mode from session object - for Gemini sessions use explicit model, default to gemini-2.5-pro
+    const isGeminiSession = resolvedAgentType === 'gemini';
+    const modelMode = session.modelMode || (isGeminiSession ? 'gemini-2.5-pro' : 'default');
+    const codexReasoningEffort = session.codexReasoningEffort || 'xhigh';
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
@@ -239,12 +240,18 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
     }, [sessionId]);
 
     // Function to update model mode (for Gemini/Codex sessions)
-    const updateModelMode = React.useCallback((mode: 'default' | 'gemini-3-pro' | 'gemini-3-flash' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'gpt-5.3-codex' | 'gpt-5.2-codex' | 'gpt-5.2' | 'gpt-5.1-codex-max' | 'gpt-5.1-codex-mini') => {
+    const updateModelMode = React.useCallback((mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'gpt-5.3-codex' | 'gpt-5.2-codex' | 'gpt-5.2' | 'gpt-5.1-codex-max' | 'gpt-5.1-codex-mini') => {
         storage.getState().updateSessionModelMode(sessionId, mode);
     }, [sessionId]);
     const updateCodexReasoningEffort = React.useCallback((effort: 'low' | 'medium' | 'high' | 'xhigh') => {
         storage.getState().updateSessionCodexReasoningEffort(sessionId, effort);
     }, [sessionId]);
+
+    React.useEffect(() => {
+        if ((isCodexSession || isGeminiSession) && permissionMode !== 'yolo') {
+            storage.getState().updateSessionPermissionMode(sessionId, 'yolo');
+        }
+    }, [isCodexSession, isGeminiSession, permissionMode, sessionId]);
 
     const handleSwitchPath = React.useCallback(async (pathToUse: string) => {
         const machineId = session.metadata?.machineId;

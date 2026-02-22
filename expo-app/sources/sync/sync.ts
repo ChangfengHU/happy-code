@@ -371,13 +371,13 @@ class Sync {
         }
 
         // Read permission mode from session state
-        const permissionMode = session.permissionMode || 'default';
+        const permissionMode = session.permissionMode || 'yolo';
 
-        // Read model mode - for Gemini, default to gemini-3-pro if not set
+        // Read model mode - for Gemini, default to gemini-2.5-pro if not set
         const flavor = session.metadata?.flavor;
         const isGemini = flavor === 'gemini';
         const isCodex = flavor === 'codex' || flavor === 'gpt' || flavor === 'openai';
-        const modelMode = session.modelMode || (isGemini ? 'gemini-3-pro' : 'default');
+        const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
 
         // Generate local ID
         const localId = randomUUID();
@@ -405,7 +405,7 @@ class Sync {
             model = modelMode;
         }
         const reasoningEffort: 'low' | 'medium' | 'high' | 'xhigh' | null = isCodex
-            ? (session.codexReasoningEffort || 'medium')
+            ? (session.codexReasoningEffort || 'xhigh')
             : null;
         const fallbackModel: string | null = null;
 
@@ -415,7 +415,7 @@ class Sync {
             content: userContent,
             meta: {
                 sentFrom,
-                permissionMode: permissionMode || 'default',
+                permissionMode: permissionMode || 'yolo',
                 model,
                 ...(isCodex ? { reasoningEffort } : {}),
                 fallbackModel,
@@ -448,7 +448,7 @@ class Sync {
             message: encryptedRawRecord,
             localId,
             sentFrom,
-            permissionMode: permissionMode || 'default'
+            permissionMode: permissionMode || 'yolo'
         });
     }
 

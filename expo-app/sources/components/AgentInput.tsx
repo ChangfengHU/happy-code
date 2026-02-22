@@ -470,8 +470,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         const m = props.modelMode;
 
         if (isGemini) {
-            if (m === 'gemini-3-pro') return 'Gemini 3 Pro';
-            if (m === 'gemini-3-flash') return 'Gemini 3 Flash';
             if (m === 'gemini-2.5-pro') return 'Gemini 2.5 Pro';
             if (m === 'gemini-2.5-flash') return 'Gemini 2.5 Flash';
             if (m === 'gemini-2.5-flash-lite') return 'Gemini 2.5 Flash Lite';
@@ -480,7 +478,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         }
 
         if (isCodex) {
-            const effortLabel = props.reasoningEffort || 'medium';
+            const effortLabel = props.reasoningEffort || 'xhigh';
             if (m === 'gpt-5.3-codex') return `gpt-5.3-codex (${effortLabel})`;
             if (m === 'gpt-5.2-codex') return `gpt-5.2-codex (${effortLabel})`;
             if (m === 'gpt-5.2') return `gpt-5.2 (${effortLabel})`;
@@ -895,10 +893,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             }
             // Handle Shift+Tab for permission mode switching
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-                const modeOrder: PermissionMode[] = isCodex
-                    ? ['default', 'read-only', 'safe-yolo', 'yolo']
-                    : ['default', 'acceptEdits', 'plan', 'bypassPermissions']; // Claude and Gemini share same modes
-                const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
+                const modeOrder: PermissionMode[] = (isCodex || isGemini)
+                    ? ['yolo']
+                    : ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+                const currentIndex = modeOrder.indexOf(props.permissionMode || 'yolo');
                 const nextIndex = (currentIndex + 1) % modeOrder.length;
                 props.onPermissionModeChange(modeOrder[nextIndex]);
                 hapticsLight();
@@ -956,7 +954,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title')}
                                     </Text>
                                     {((isCodex || isGemini)
-                                        ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
+                                        ? (['yolo'] as const)
                                         : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
                                     ).map((mode) => {
                                         const modeConfig = isCodex ? {
@@ -1043,10 +1041,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     </Text>
                                     {isGemini ? (
                                         // Gemini model selector
-                                        (['gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const).map((model) => {
+                                        (['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const).map((model) => {
                                             const modelConfig = {
-                                                'gemini-3-pro': { label: 'Gemini 3 Pro', description: 'Newest high-capability Gemini model' },
-                                                'gemini-3-flash': { label: 'Gemini 3 Flash', description: 'Newest fast/efficient Gemini model' },
                                                 'gemini-2.5-pro': { label: 'Gemini 2.5 Pro', description: '性能最强' },
                                                 'gemini-2.5-flash': { label: 'Gemini 2.5 Flash', description: '快速高效' },
                                                 'gemini-2.5-flash-lite': { label: 'Gemini 2.5 Flash Lite', description: '极速响应' },
@@ -1195,12 +1191,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             {(['low', 'medium', 'high', 'xhigh'] as const).map((effort) => {
                                                 const effortConfig = {
                                                     low: { label: 'Low', description: 'Fast responses with lighter reasoning' },
-                                                    medium: { label: 'Medium (default)', description: 'Balanced speed and reasoning depth' },
+                                                    medium: { label: 'Medium', description: 'Balanced speed and reasoning depth' },
                                                     high: { label: 'High', description: 'Greater reasoning depth for complex tasks' },
-                                                    xhigh: { label: 'Extra high', description: 'Maximum depth for hardest tasks' },
+                                                    xhigh: { label: 'Extra high (default)', description: 'Maximum depth for hardest tasks' },
                                                 };
                                                 const config = effortConfig[effort];
-                                                const isSelected = (props.reasoningEffort || 'medium') === effort;
+                                                const isSelected = (props.reasoningEffort || 'xhigh') === effort;
 
                                                 return (
                                                     <Pressable

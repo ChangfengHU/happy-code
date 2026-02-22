@@ -21,6 +21,16 @@ export type ToolCall = {
     };
 }
 
+export type UserImageAttachment = {
+    mimeType: string;
+    data?: string;
+    url?: string;
+    name?: string;
+    width?: number;
+    height?: number;
+    size?: number;
+};
+
 // Flattened message types - each message represents a single block
 export type UserTextMessage = {
     kind: 'user-text';
@@ -29,6 +39,7 @@ export type UserTextMessage = {
     createdAt: number;
     text: string;
     displayText?: string; // Optional text to display in UI instead of actual text
+    images?: UserImageAttachment[];
     meta?: MessageMeta;
 }
 

@@ -218,7 +218,10 @@ export async function runCodex(opts: {
             model: messageModel,
             reasoningEffort: messageReasoningEffort,
         };
-        messageQueue.push(message.content.text, enhancedMode);
+        // The message content can be of different types (e.g. image), so we need to check for text
+        if (message.content.type === 'text') {
+            messageQueue.push(message.content.text, enhancedMode);
+        }
     });
     let thinking = false;
     session.keepAlive(thinking, 'remote');

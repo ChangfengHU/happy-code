@@ -143,7 +143,7 @@ import { execFileSync } from 'node:child_process'
     // Handle "happy gemini model set <model>" command
     if (geminiSubcommand === 'model' && args[2] === 'set' && args[3]) {
       const modelName = args[3];
-      const validModels = ['gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+      const validModels = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
       if (!validModels.includes(modelName)) {
         console.error(`Invalid model: ${modelName}`);
@@ -220,7 +220,7 @@ import { execFileSync } from 'node:child_process'
         } else if (process.env.GEMINI_MODEL) {
           console.log(`Current model: ${process.env.GEMINI_MODEL} (from GEMINI_MODEL env var)`);
         } else {
-          console.log('Current model: gemini-3-pro (default)');
+          console.log('Current model: gemini-2.5-pro (default)');
         }
         process.exit(0);
       } catch (error) {

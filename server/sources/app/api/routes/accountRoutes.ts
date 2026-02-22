@@ -2,11 +2,13 @@ import { eventRouter, buildUpdateAccountUpdate } from "@/app/events/eventRouter"
 import { db } from "@/storage/db";
 import { Fastify } from "../types";
 import { getPublicUrl } from "@/storage/files";
+import { uploadImage } from "@/storage/uploadImage";
 import { z } from "zod";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { log } from "@/utils/log";
 import { AccountProfile } from "@/types";
+import { createHash } from "node:crypto";
 
 export function accountRoutes(app: Fastify) {
     app.get('/v1/account/profile', {
@@ -173,6 +175,88 @@ export function accountRoutes(app: Fastify) {
                 success: false,
                 error: 'Failed to update account settings'
             });
+        }
+    });
+
+    app.post('/v1/account/images', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                data: z.string().min(1),
+                mimeType: z.string().min(1),
+                name: z.string().max(256).optional(),
+                width: z.number().int().positive().optional(),
+                height: z.number().int().positive().optional(),
+                size: z.number().int().positive().optional()
+            }),
+            response: {
+                200: z.object({
+                    image: z.object({
+                        path: z.string(),
+                        url: z.string(),
+                        mimeType: z.string(),
+                        name: z.string().nullable(),
+                        width: z.number().nullable(),
+                        height: z.number().nullable(),
+                        size: z.number(),
+                        thumbhash: z.string().nullable()
+                    })
+                }),
+                400: z.object({
+                    error: z.literal('Invalid image data')
+                }),
+                413: z.object({
+                    error: z.literal('Image too large')
+                }),
+                500: z.object({
+                    error: z.literal('Failed to upload image')
+                })
+            }
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { data, mimeType, name, width, height, size } = request.body;
+
+        let src: Buffer;
+        try {
+            src = Buffer.from(data, 'base64');
+        } catch {
+            return reply.code(400).send({ error: 'Invalid image data' });
+        }
+
+        if (!src.length) {
+            return reply.code(400).send({ error: 'Invalid image data' });
+        }
+
+        const maxUploadBytes = 2 * 1024 * 1024;
+        if (src.length > maxUploadBytes) {
+            return reply.code(413).send({ error: 'Image too large' });
+        }
+
+        try {
+            const hash = createHash('sha256').update(src).digest('hex');
+            const uploaded = await uploadImage(
+                userId,
+                'chat-images',
+                'chat-image',
+                `inline:${hash}:${mimeType}`,
+                src
+            );
+            return reply.send({
+                image: {
+                    path: uploaded.path,
+                    url: getPublicUrl(uploaded.path),
+                    mimeType,
+                    name: name || null,
+                    width: uploaded.width ?? width ?? null,
+                    height: uploaded.height ?? height ?? null,
+                    size: size ?? src.length,
+                    thumbhash: uploaded.thumbhash ?? null
+                }
+            });
+        } catch (error) {
+            log({ module: 'api', level: 'error' }, `Failed to upload account image: ${error}`);
+            return reply.code(500).send({ error: 'Failed to upload image' });
         }
     });
 

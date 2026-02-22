@@ -11,6 +11,7 @@ import React from 'react';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { join, resolve } from 'node:path';
+import type { ContentBlock } from '@agentclientprotocol/sdk';
 
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
@@ -38,7 +39,7 @@ import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
 import { GeminiDiffProcessor } from '@/gemini/utils/diffProcessor';
 import type { GeminiMode, CodexMessagePayload } from '@/gemini/types';
-import type { PermissionMode } from '@/api/types';
+import { PermissionMode, getUserContentImages, getUserContentText, type UserImageContent } from '@/api/types';
 import { GEMINI_MODEL_ENV, DEFAULT_GEMINI_MODEL, CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import {
   readGeminiLocalConfig,
@@ -51,6 +52,113 @@ import {
   formatOptionsXml,
 } from '@/gemini/utils/optionsParser';
 import { ConversationHistory } from '@/gemini/utils/conversationHistory';
+
+type QueuedGeminiMessage = {
+  text: string;
+  images: UserImageContent[];
+  originalUserMessage: string;
+};
+
+const IMAGE_FETCH_TIMEOUT_MS = 20000;
+const DEFAULT_IMAGE_MIME = 'image/jpeg';
+
+function combineQueuedGeminiMessages(messages: QueuedGeminiMessage[]): QueuedGeminiMessage {
+  return {
+    text: messages.map((message) => message.text).filter(Boolean).join('\n'),
+    images: messages.flatMap((message) => message.images),
+    originalUserMessage: messages
+      .map((message) => message.originalUserMessage)
+      .filter(Boolean)
+      .join('\n')
+  };
+}
+
+function inferMimeTypeFromUrl(url: string): string | null {
+  const normalized = url.toLowerCase();
+  if (normalized.endsWith('.png')) return 'image/png';
+  if (normalized.endsWith('.webp')) return 'image/webp';
+  if (normalized.endsWith('.gif')) return 'image/gif';
+  if (normalized.endsWith('.bmp')) return 'image/bmp';
+  if (normalized.endsWith('.svg')) return 'image/svg+xml';
+  if (normalized.endsWith('.heic')) return 'image/heic';
+  if (normalized.endsWith('.heif')) return 'image/heif';
+  if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) return 'image/jpeg';
+  return null;
+}
+
+function normalizeImageMimeType(preferred: string | undefined, fallback: string | undefined): string {
+  const resolved = preferred || fallback || DEFAULT_IMAGE_MIME;
+  if (resolved === 'image/*') {
+    return fallback || DEFAULT_IMAGE_MIME;
+  }
+  return resolved;
+}
+
+async function resolveGeminiImageContent(image: UserImageContent): Promise<{
+  data: string;
+  mimeType: string;
+  uri?: string;
+}> {
+  if (image.data) {
+    return {
+      data: image.data,
+      mimeType: normalizeImageMimeType(image.mimeType, undefined),
+      ...(image.url ? { uri: image.url } : {})
+    };
+  }
+
+  if (!image.url) {
+    throw new Error('Image attachment is missing both data and url');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(image.url, {
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const headerMime = response.headers.get('content-type')?.split(';')[0]?.trim() || undefined;
+    return {
+      data: bytes.toString('base64'),
+      mimeType: normalizeImageMimeType(image.mimeType, headerMime || inferMimeTypeFromUrl(image.url) || undefined),
+      uri: image.url
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function buildGeminiPromptBlocks(text: string, images: UserImageContent[]): Promise<ContentBlock[]> {
+  const promptText = text.trim() || (images.length > 0 ? 'Please analyze the attached image(s).' : '');
+  const blocks: ContentBlock[] = [{
+    type: 'text',
+    text: promptText
+  }];
+
+  for (const image of images) {
+    const resolved = await resolveGeminiImageContent(image);
+    blocks.push({
+      type: 'image',
+      mimeType: resolved.mimeType,
+      data: resolved.data,
+      ...(resolved.uri ? { uri: resolved.uri } : {})
+    });
+  }
+
+  return blocks;
+}
+
+function supportsPromptContent(backend: AgentBackend): backend is AgentBackend & {
+  sendPromptContent: (sessionId: string, content: ContentBlock[]) => Promise<void>;
+} {
+  const maybeBackend = backend as AgentBackend & { sendPromptContent?: unknown };
+  return typeof maybeBackend.sendPromptContent === 'function';
+}
 
 
 /**
@@ -195,10 +303,10 @@ export async function runGemini(opts: {
     }
   }
 
-  const messageQueue = new MessageQueue2<GeminiMode>((mode) => hashObject({
+  const messageQueue = new MessageQueue2<GeminiMode, QueuedGeminiMessage>((mode) => hashObject({
     permissionMode: mode.permissionMode,
     model: mode.model,
-  }));
+  }), null, combineQueuedGeminiMessages);
 
   // Conversation history for context preservation across model changes
   const conversationHistory = new ConversationHistory({ maxMessages: 20, maxCharacters: 50000 });
@@ -260,7 +368,11 @@ export async function runGemini(opts: {
 
     // Build the full prompt with appendSystemPrompt if provided
     // Only include system prompt for the first message to avoid forcing tool usage on every message
-    const originalUserMessage = message.content.text;
+    const originalUserMessage = getUserContentText(message.content);
+    const userImages = getUserContentImages(message.content);
+    if (!originalUserMessage.trim() && userImages.length === 0) {
+      return;
+    }
     let fullPrompt = originalUserMessage;
     if (isFirstMessage && message.meta?.appendSystemPrompt) {
       // Prepend system prompt to user message only for first message
@@ -277,7 +389,11 @@ export async function runGemini(opts: {
       model: messageModel,
       originalUserMessage, // Store original message separately
     };
-    messageQueue.push(fullPrompt, mode);
+    messageQueue.push({
+      text: fullPrompt,
+      images: userImages,
+      originalUserMessage,
+    }, mode);
 
     // Record user message in conversation history for context preservation
     conversationHistory.addUserMessage(originalUserMessage);
@@ -886,10 +1002,10 @@ export async function runGemini(opts: {
 
   try {
     let currentModeHash: string | null = null;
-    let pending: { message: string; mode: GeminiMode; isolate: boolean; hash: string } | null = null;
+    let pending: { message: QueuedGeminiMessage; mode: GeminiMode; isolate: boolean; hash: string } | null = null;
 
     while (!shouldExit) {
-      let message: { message: string; mode: GeminiMode; isolate: boolean; hash: string } | null = pending;
+      let message: { message: QueuedGeminiMessage; mode: GeminiMode; isolate: boolean; hash: string } | null = pending;
       pending = null;
 
       if (!message) {
@@ -904,7 +1020,7 @@ export async function runGemini(opts: {
           logger.debug('[gemini] Main loop: no batch received, breaking...');
           break;
         }
-        logger.debug(`[gemini] Main loop: received message from queue (length: ${batch.message.length})`);
+        logger.debug(`[gemini] Main loop: received message from queue (length: ${batch.message.text.length}, images: ${batch.message.images.length})`);
         message = batch;
       }
 
@@ -983,7 +1099,11 @@ export async function runGemini(opts: {
 
       currentModeHash = message.hash;
       // Show only original user message in UI, not the full prompt with system prompt
-      const userMessageToShow = message.mode?.originalUserMessage || message.message;
+      const userMessageToShow =
+        message.mode?.originalUserMessage ||
+        message.message.originalUserMessage ||
+        message.message.text ||
+        `[Image message: ${message.message.images.length} attachment(s)]`;
       messageBuffer.addMessage(userMessageToShow, 'user');
 
       // Mark that we're processing a message to synchronize session swaps
@@ -1049,8 +1169,8 @@ export async function runGemini(opts: {
 
         // Track if this prompt contains change_title instruction
         // If so, don't send task_complete until change_title is completed
-        pendingChangeTitle = message.message.includes('change_title') ||
-          message.message.includes('happy__change_title');
+        pendingChangeTitle = message.message.text.includes('change_title') ||
+          message.message.text.includes('happy__change_title');
         changeTitleCompleted = false;
 
         if (!geminiBackend || !acpSessionId) {
@@ -1059,7 +1179,7 @@ export async function runGemini(opts: {
 
         // The prompt already includes system prompt and change_title instruction (added in onUserMessage handler)
         // This is done in the message queue, so message.message already contains everything
-        let promptToSend = message.message;
+        let promptToSend = message.message.text;
 
         // Inject conversation history context if model was just changed
         if (injectHistoryContext && conversationHistory.hasHistory()) {
@@ -1076,10 +1196,15 @@ export async function runGemini(opts: {
         const MAX_RETRIES = 3;
         const RETRY_DELAY_MS = 2000;
         let lastError: unknown = null;
+        const promptBlocks = await buildGeminiPromptBlocks(promptToSend, message.message.images);
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           try {
-            await geminiBackend.sendPrompt(acpSessionId, promptToSend);
+            if (supportsPromptContent(geminiBackend)) {
+              await geminiBackend.sendPromptContent(acpSessionId, promptBlocks);
+            } else {
+              await geminiBackend.sendPrompt(acpSessionId, promptToSend);
+            }
             logger.debug('[gemini] Prompt sent successfully');
 
             // Wait for Gemini to finish responding (all chunks received + final idle)
@@ -1108,7 +1233,7 @@ export async function runGemini(opts: {
                 const parts = resetTimeMatch.slice(1).filter(Boolean).join('');
                 resetTimeMsg = ` Quota resets in ${parts}.`;
               }
-              const quotaMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-3-flash) or wait for quota reset.`;
+              const quotaMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash) or wait for quota reset.`;
               messageBuffer.addMessage(quotaMsg, 'status');
               session.sendAgentMessage('gemini', { type: 'message', message: quotaMsg });
               throw promptError; // Don't retry quota errors
@@ -1165,7 +1290,7 @@ export async function runGemini(opts: {
             if (errorCode === 404 || errorDetails.includes('notFound') || errorDetails.includes('404') ||
               errorMessage.includes('not found') || errorMessage.includes('404')) {
               const currentModel = displayedModel || DEFAULT_GEMINI_MODEL;
-              errorMsg = `Model "${currentModel}" not found. Available models: gemini-3-pro, gemini-3-flash, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite`;
+              errorMsg = `Model "${currentModel}" not found. Available models: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite`;
             }
             // Check for empty response / internal error after retries exhausted
             else if (errorCode === -32603 ||
@@ -1190,7 +1315,7 @@ export async function runGemini(opts: {
                 const parts = resetTimeMatch.slice(1).filter(Boolean).join('');
                 resetTimeMsg = ` Quota resets in ${parts}.`;
               }
-              errorMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-3-flash) or wait for quota reset.`;
+              errorMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash) or wait for quota reset.`;
             }
             // Check for authentication error (Google Workspace accounts need project ID)
             else if (errorMessage.includes('Authentication required') ||

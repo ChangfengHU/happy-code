@@ -534,7 +534,6 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const experimentsEnabled = useSetting('experiments');
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
-    const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const profiles = useSetting('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
@@ -548,7 +547,10 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
         return 'claude';
     });
-    const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
+    const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
+        // Always default to yolo-style mode for new sessions, independent of stored CLI settings.
+        return agentType === 'codex' ? 'yolo' : 'bypassPermissions';
+    });
     const [modelMode, setModelMode] = useState<ModelMode>('default');
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {
         return lastUsedProfile;

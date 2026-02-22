@@ -12,14 +12,16 @@
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--colors-divider);
+    background: var(--colors-text-secondary);
+    background: color-mix(in srgb, var(--colors-text-secondary) 68%, var(--colors-divider) 32%);
     border-radius: 6px;
-    border: 2px solid transparent;
+    border: 2px solid var(--colors-surface-high);
     background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--colors-text-secondary);
+    background: var(--colors-text);
+    background: color-mix(in srgb, var(--colors-text) 78%, var(--colors-text-secondary) 22%);
     background-clip: padding-box;
 }
 
@@ -29,8 +31,9 @@
 
 /* Firefox */
 * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--colors-divider) var(--colors-surface-high);
+    scrollbar-color: var(--colors-text-secondary) var(--colors-surface-high);
+    scrollbar-width: auto;
+    scrollbar-color: color-mix(in srgb, var(--colors-text-secondary) 68%, var(--colors-divider) 32%) var(--colors-surface-high);
 }
 
 /* Ensure scrollbars are visible on hover for macOS */

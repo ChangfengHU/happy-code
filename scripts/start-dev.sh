@@ -274,7 +274,8 @@ start_daemon() {
   fi
 
   # 构建（如果需要）
-  if [[ ! -d dist ]]; then
+  # RESTART=1 时强制重建，避免沿用旧 dist 导致行为与源码不一致
+  if [[ ! -d dist || "${RESTART}" == "1" ]]; then
     log_info "构建 CLI..."
     corepack yarn build
   fi

@@ -110,8 +110,8 @@
  * - Updated internal state for future processing
  */
 
-import { Message, ToolCall } from "../typesMessage";
-import { AgentEvent, NormalizedMessage, UsageData } from "../typesRaw";
+import { Message, ToolCall, UserImageAttachment } from "../typesMessage";
+import { AgentEvent, NormalizedMessage, RawUserContent, UsageData } from "../typesRaw";
 import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
@@ -123,6 +123,7 @@ type ReducerMessage = {
     createdAt: number;
     role: 'user' | 'agent';
     text: string | null;
+    userImages?: UserImageAttachment[];
     isThinking?: boolean;
     event: AgentEvent | null;
     tool: ToolCall | null;
@@ -596,12 +597,14 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
             // Create a new message
             let mid = allocateId();
+            const parsedUserContent = mapUserContentToDisplay(msg.content);
             state.messages.set(mid, {
                 id: mid,
                 realID: msg.id,
                 role: 'user',
                 createdAt: msg.createdAt,
-                text: msg.content.text,
+                text: parsedUserContent.text,
+                ...(parsedUserContent.images.length > 0 ? { userImages: parsedUserContent.images } : {}),
                 tool: null,
                 event: null,
                 meta: msg.meta,
@@ -1100,6 +1103,34 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
     }
 }
 
+function mapUserContentToDisplay(content: RawUserContent): { text: string; images: UserImageAttachment[] } {
+    if (content.type === 'text') {
+        return { text: content.text, images: [] };
+    }
+
+    if (content.type === 'image') {
+        return {
+            text: '',
+            images: [content]
+        };
+    }
+
+    const textParts: string[] = [];
+    const images: UserImageAttachment[] = [];
+    for (const part of content.parts) {
+        if (part.type === 'text') {
+            textParts.push(part.text);
+        } else {
+            images.push(part);
+        }
+    }
+
+    return {
+        text: textParts.join('\n'),
+        images
+    };
+}
+
 
 function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: ReducerState): Message | null {
     if (reducerMsg.role === 'user' && reducerMsg.text !== null) {
@@ -1109,6 +1140,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             createdAt: reducerMsg.createdAt,
             kind: 'user-text',
             text: reducerMsg.text,
+            ...(reducerMsg.userImages && reducerMsg.userImages.length > 0 ? { images: reducerMsg.userImages } : {}),
             ...(reducerMsg.meta?.displayText && { displayText: reducerMsg.meta.displayText }),
             meta: reducerMsg.meta
         };

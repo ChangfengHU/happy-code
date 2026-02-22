@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -84,6 +84,16 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.text,
         ...Typography.default(),
     },
+    filterInput: {
+        marginTop: 8,
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 9,
+        backgroundColor: theme.colors.input.background,
+        color: theme.colors.text,
+        fontSize: 14,
+        ...Typography.default(),
+    },
 }));
 
 const normalizePath = (path: string): string => {
@@ -148,6 +158,7 @@ export default function PathPickerScreen() {
     const [entries, setEntries] = React.useState<DirectoryEntry[]>([]);
     const [isLoading, setIsLoading] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
+    const [folderFilter, setFolderFilter] = React.useState('');
 
     React.useEffect(() => {
         if (!currentPath && rootPath) {
@@ -195,6 +206,18 @@ export default function PathPickerScreen() {
             loadEntries(currentPath);
         }
     }, [currentPath, loadEntries]);
+
+    React.useEffect(() => {
+        setFolderFilter('');
+    }, [currentPath]);
+
+    const filteredEntries = React.useMemo(() => {
+        const normalizedFilter = folderFilter.trim().toLowerCase();
+        if (!normalizedFilter) {
+            return entries;
+        }
+        return entries.filter(entry => entry.name.toLowerCase().includes(normalizedFilter));
+    }, [entries, folderFilter]);
 
     const handleSelectPath = React.useCallback(() => {
         const pathToUse = currentPath || rootPath;
@@ -287,6 +310,16 @@ export default function PathPickerScreen() {
                                 <Ionicons name="refresh" size={16} color={theme.colors.textSecondary} />
                                 <Text style={styles.actionText}>Refresh</Text>
                             </Pressable>
+                            <TextInput
+                                value={folderFilter}
+                                onChangeText={setFolderFilter}
+                                placeholder={t('remoteFs.searchPlaceholder')}
+                                placeholderTextColor={theme.colors.textSecondary}
+                                style={styles.filterInput}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                clearButtonMode="while-editing"
+                            />
                         </View>
 
                         <ItemGroup title="Folders">
@@ -311,19 +344,19 @@ export default function PathPickerScreen() {
                                     <Text style={styles.emptyText}>Failed to load folders</Text>
                                     <Text style={styles.errorText}>{error}</Text>
                                 </View>
-                            ) : entries.length === 0 ? (
+                            ) : filteredEntries.length === 0 ? (
                                 <View style={{ paddingVertical: 24, alignItems: 'center' }}>
                                     <Ionicons name="folder-open-outline" size={28} color={theme.colors.textSecondary} />
                                     <Text style={styles.emptyText}>No subfolders found</Text>
                                 </View>
                             ) : (
-                                entries.map((entry, index) => (
+                                filteredEntries.map((entry, index) => (
                                     <Item
                                         key={`${currentPath}/${entry.name}`}
                                         title={entry.name}
                                         icon={<Ionicons name="folder-outline" size={22} color={theme.colors.textSecondary} />}
                                         onPress={() => setCurrentPath(joinPath(currentPath || rootPath, entry.name))}
-                                        showDivider={index < entries.length - 1}
+                                        showDivider={index < filteredEntries.length - 1}
                                         showChevron={false}
                                     />
                                 ))

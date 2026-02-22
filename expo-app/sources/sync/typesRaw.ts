@@ -36,6 +36,71 @@ const rawTextContentSchema = z.object({
 }).passthrough();  // ROBUST: Accept unknown fields for future API compatibility
 export type RawTextContent = z.infer<typeof rawTextContentSchema>;
 
+const rawImageSourceSchema = z.discriminatedUnion('type', [
+    z.object({
+        type: z.literal('base64'),
+        media_type: z.string(),
+        data: z.string(),
+    }),
+    z.object({
+        type: z.literal('url'),
+        url: z.string(),
+        media_type: z.string().optional(),
+    }),
+]);
+
+const rawImageContentSchema = z.object({
+    type: z.literal('image'),
+    // Canonical image shape (used by mobile/web message payload)
+    mimeType: z.string().optional(),
+    data: z.string().optional(),
+    url: z.string().optional(),
+    name: z.string().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    size: z.number().optional(),
+    // Claude SDK shape
+    source: rawImageSourceSchema.optional(),
+}).passthrough();
+export type RawImageContent = z.infer<typeof rawImageContentSchema>;
+
+const rawUserTextContentSchema = z.object({
+    type: z.literal('text'),
+    text: z.string(),
+});
+export type RawUserTextContent = z.infer<typeof rawUserTextContentSchema>;
+
+const rawUserImageContentSchema = z.object({
+    type: z.literal('image'),
+    mimeType: z.string(),
+    data: z.string().optional(),
+    url: z.string().optional(),
+    name: z.string().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    size: z.number().optional(),
+});
+export type RawUserImageContent = z.infer<typeof rawUserImageContentSchema>;
+
+const rawUserInputPartSchema = z.discriminatedUnion('type', [
+    rawUserTextContentSchema,
+    rawUserImageContentSchema,
+]);
+export type RawUserInputPart = z.infer<typeof rawUserInputPartSchema>;
+
+const rawUserInputContentSchema = z.object({
+    type: z.literal('input'),
+    parts: z.array(rawUserInputPartSchema).min(1),
+});
+export type RawUserInputContent = z.infer<typeof rawUserInputContentSchema>;
+
+const rawUserContentSchema = z.discriminatedUnion('type', [
+    rawUserTextContentSchema,
+    rawUserImageContentSchema,
+    rawUserInputContentSchema,
+]);
+export type RawUserContent = z.infer<typeof rawUserContentSchema>;
+
 const rawToolUseContentSchema = z.object({
     type: z.literal('tool_use'),
     id: z.string(),
@@ -114,6 +179,7 @@ type RawHyphenatedToolResult = z.infer<typeof rawHyphenatedToolResultSchema>;
  */
 const rawAgentContentInputSchema = z.discriminatedUnion('type', [
     rawTextContentSchema,           // type: 'text' (canonical)
+    rawImageContentSchema,          // type: 'image' (Claude image blocks)
     rawToolUseContentSchema,        // type: 'tool_use' (canonical)
     rawToolResultContentSchema,     // type: 'tool_result' (canonical)
     rawThinkingContentSchema,       // type: 'thinking' (canonical)
@@ -155,11 +221,12 @@ function normalizeToToolResult(input: RawHyphenatedToolResult) {
  * Normalization happens via .preprocess() at root level to avoid Zod v4 "unmergable intersection" issue.
  * See: https://github.com/colinhacks/zod/discussions/2100
  *
- * Accepts: 'text' | 'tool_use' | 'tool_result' | 'thinking' | 'tool-call' | 'tool-call-result'
+ * Accepts: 'text' | 'image' | 'tool_use' | 'tool_result' | 'thinking' | 'tool-call' | 'tool-call-result'
  * All types validated by their respective schemas with .passthrough() for unknown fields
  */
 const rawAgentContentSchema = z.union([
     rawTextContentSchema,
+    rawImageContentSchema,
     rawToolUseContentSchema,
     rawToolResultContentSchema,
     rawThinkingContentSchema,
@@ -316,10 +383,7 @@ const rawRecordSchema = z.preprocess(
         }),
         z.object({
             role: z.literal('user'),
-            content: z.object({
-                type: z.literal('text'),
-                text: z.string()
-            }),
+            content: rawUserContentSchema,
             meta: MessageMetaSchema.optional()
         })
     ])
@@ -379,10 +443,7 @@ type NormalizedAgentContent =
 
 export type NormalizedMessage = ({
     role: 'user'
-    content: {
-        type: 'text';
-        text: string;
-    }
+    content: RawUserContent
 } | {
     role: 'agent'
     content: NormalizedAgentContent[]
@@ -397,6 +458,95 @@ export type NormalizedMessage = ({
     meta?: MessageMeta,
     usage?: UsageData,
 };
+
+function normalizeUserImageFromContentItem(item: any): RawUserImageContent | null {
+    if (!item || typeof item !== 'object' || item.type !== 'image') {
+        return null;
+    }
+
+    const width = typeof item.width === 'number' ? item.width : undefined;
+    const height = typeof item.height === 'number' ? item.height : undefined;
+    const size = typeof item.size === 'number' ? item.size : undefined;
+    const name = typeof item.name === 'string' ? item.name : undefined;
+
+    if (typeof item.mimeType === 'string' && (typeof item.data === 'string' || typeof item.url === 'string')) {
+        return {
+            type: 'image',
+            mimeType: item.mimeType,
+            ...(typeof item.data === 'string' ? { data: item.data } : {}),
+            ...(typeof item.url === 'string' ? { url: item.url } : {}),
+            ...(name ? { name } : {}),
+            ...(width !== undefined ? { width } : {}),
+            ...(height !== undefined ? { height } : {}),
+            ...(size !== undefined ? { size } : {}),
+        };
+    }
+
+    if (item.source && typeof item.source === 'object') {
+        if (item.source.type === 'base64' && typeof item.source.media_type === 'string' && typeof item.source.data === 'string') {
+            return {
+                type: 'image',
+                mimeType: item.source.media_type,
+                data: item.source.data,
+                ...(name ? { name } : {}),
+                ...(width !== undefined ? { width } : {}),
+                ...(height !== undefined ? { height } : {}),
+                ...(size !== undefined ? { size } : {}),
+            };
+        }
+        if (item.source.type === 'url' && typeof item.source.url === 'string') {
+            return {
+                type: 'image',
+                mimeType: typeof item.source.media_type === 'string' ? item.source.media_type : 'image/*',
+                url: item.source.url,
+                ...(name ? { name } : {}),
+                ...(width !== undefined ? { width } : {}),
+                ...(height !== undefined ? { height } : {}),
+                ...(size !== undefined ? { size } : {}),
+            };
+        }
+    }
+
+    return null;
+}
+
+function normalizeUserPartsFromContentArray(content: any[]): RawUserInputPart[] {
+    const parts: RawUserInputPart[] = [];
+
+    for (const item of content) {
+        if (!item || typeof item !== 'object') {
+            continue;
+        }
+
+        if (item.type === 'text' && typeof item.text === 'string') {
+            parts.push({
+                type: 'text',
+                text: item.text,
+            });
+            continue;
+        }
+
+        const image = normalizeUserImageFromContentItem(item);
+        if (image) {
+            parts.push(image);
+        }
+    }
+
+    return parts;
+}
+
+function collapseUserPartsToContent(parts: RawUserInputPart[]): RawUserContent | null {
+    if (parts.length === 0) {
+        return null;
+    }
+    if (parts.length === 1) {
+        return parts[0];
+    }
+    return {
+        type: 'input',
+        parts,
+    };
+}
 
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
     // Zod transform handles normalization during validation
@@ -511,6 +661,27 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                             text: raw.content.data.message.content
                         }
                     };
+                }
+
+                if (raw.content.data.message && Array.isArray(raw.content.data.message.content)) {
+                    const hasToolResultBlocks = raw.content.data.message.content.some((item) => {
+                        return item && typeof item === 'object' && item.type === 'tool_result';
+                    });
+
+                    if (!hasToolResultBlocks) {
+                        const parts = normalizeUserPartsFromContentArray(raw.content.data.message.content);
+                        const normalizedUserContent = collapseUserPartsToContent(parts);
+                        if (normalizedUserContent) {
+                            return {
+                                id,
+                                localId,
+                                createdAt,
+                                role: 'user',
+                                isSidechain: false,
+                                content: normalizedUserContent
+                            };
+                        }
+                    }
                 }
 
                 // Handle tool results

@@ -12,6 +12,7 @@ import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode } from "./loop";
+import type { QueuedClaudeUserMessage } from "./runClaude";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
@@ -291,8 +292,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     try {
         let pending: {
-            message: string;
+            message: QueuedClaudeUserMessage;
             mode: EnhancedMode;
+            isolate: boolean;
+            hash: string;
         } | null = null;
 
         // Track session ID to detect when it actually changes

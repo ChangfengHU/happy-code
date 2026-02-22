@@ -872,13 +872,26 @@ export class AcpBackend implements AgentBackend {
   private waitingForResponse = false;
 
   async sendPrompt(sessionId: SessionId, prompt: string): Promise<void> {
+    const contentBlock: ContentBlock = {
+      type: 'text',
+      text: prompt,
+    };
+    await this.sendPromptContent(sessionId, [contentBlock]);
+  }
+
+  async sendPromptContent(sessionId: SessionId, content: ContentBlock[]): Promise<void> {
+    const promptText = content
+      .filter((block): block is ContentBlock & { type: 'text'; text: string } => block.type === 'text')
+      .map((block) => block.text)
+      .join('\n');
+
     // Check if prompt contains change_title instruction (via optional callback)
-    const promptHasChangeTitle = this.options.hasChangeTitleInstruction?.(prompt) ?? false;
+    const promptHasChangeTitle = this.options.hasChangeTitleInstruction?.(promptText) ?? false;
 
     // Reset tool call counter and set flag
     this.toolCallCountSincePrompt = 0;
     this.recentPromptHadChangeTitle = promptHasChangeTitle;
-    
+
     if (promptHasChangeTitle) {
       logger.debug('[AcpBackend] Prompt contains change_title instruction - will auto-approve first "other" tool call if it matches pattern');
     }
@@ -894,30 +907,27 @@ export class AcpBackend implements AgentBackend {
     this.waitingForResponse = true;
 
     try {
-      logger.debug(`[AcpBackend] Sending prompt (length: ${prompt.length}): ${prompt.substring(0, 100)}...`);
-      logger.debug(`[AcpBackend] Full prompt: ${prompt}`);
-      
-      const contentBlock: ContentBlock = {
-        type: 'text',
-        text: prompt,
-      };
+      logger.debug(`[AcpBackend] Sending prompt content blocks: ${content.length}, text length: ${promptText.length}`);
+      if (promptText.length > 0) {
+        logger.debug(`[AcpBackend] Prompt preview: ${promptText.substring(0, 100)}...`);
+      }
 
       const promptRequest: PromptRequest = {
         sessionId: this.acpSessionId,
-        prompt: [contentBlock],
+        prompt: content,
       };
 
       logger.debug(`[AcpBackend] Prompt request:`, JSON.stringify(promptRequest, null, 2));
       await this.connection.prompt(promptRequest);
       logger.debug('[AcpBackend] Prompt request sent to ACP connection');
-      
+
       // Don't emit 'idle' here - it will be emitted after all message chunks are received
       // The idle timeout in handleSessionUpdate will emit 'idle' after the last chunk
 
     } catch (error) {
       logger.debug('[AcpBackend] Error sending prompt:', error);
       this.waitingForResponse = false;
-      
+
       // Extract error details for better error handling
       let errorDetail: string;
       if (error instanceof Error) {
@@ -936,10 +946,10 @@ export class AcpBackend implements AgentBackend {
       } else {
         errorDetail = String(error);
       }
-      
-      this.emit({ 
-        type: 'status', 
-        status: 'error', 
+
+      this.emit({
+        type: 'status',
+        status: 'error',
         detail: errorDetail
       });
       throw error;

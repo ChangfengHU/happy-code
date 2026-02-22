@@ -5,8 +5,7 @@ import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId, getSessionModelName } from '@/utils/sessionUtils';
-import { Avatar } from './Avatar';
+import { getSessionName, useSessionStatus, getSessionSubtitle } from '@/utils/sessionUtils';
 import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,6 +32,8 @@ import { Modal } from '@/modal';
 import { apiSocket } from '@/sync/apiSocket';
 import { sync } from '@/sync/sync';
 import { reactivateSession, SessionReactivateMode } from '@/utils/sessionReactivation';
+import { SessionModelBadge, SessionNameWithModelBadge } from '@/components/SessionNameWithModelBadge';
+import { SessionVirtualAvatar } from '@/components/SessionVirtualAvatar';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -113,7 +114,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 12,
     },
     sessionItemSelected: {
-        backgroundColor: theme.colors.surfaceSelected,
+        backgroundColor: theme.dark
+            ? '#2C2D33'
+            : Platform.select({ web: '#D3E1F8', default: '#D6DDED' }),
+        borderWidth: 1,
+        borderColor: theme.dark ? '#596074' : '#9FB5DE',
+        borderLeftWidth: 3,
+        borderLeftColor: theme.dark ? '#7FA2FF' : '#2F6FDB',
     },
     sessionContent: {
         flex: 1,
@@ -158,24 +165,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 12,
         fontWeight: '500',
         lineHeight: 16,
+        flexShrink: 1,
         ...Typography.default(),
     },
     avatarContainer: {
         position: 'relative',
         width: 48,
         height: 48,
-    },
-    draftIconContainer: {
-        position: 'absolute',
-        bottom: -2,
-        right: -2,
-        width: 18,
-        height: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    draftIconOverlay: {
-        color: theme.colors.textSecondary,
     },
     artifactsSection: {
         paddingHorizontal: 16,
@@ -216,6 +212,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         transitionProperty: 'opacity',
         transitionDuration: '150ms',
         transitionTimingFunction: 'ease-out',
+        zIndex: 5,
     },
     hoverActionsVisible: {
         opacity: 1,
@@ -376,6 +373,8 @@ export function SessionsList() {
                     keyExtractor={keyExtractor}
                     contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
                     ListHeaderComponent={HeaderComponent}
+                    showsVerticalScrollIndicator={true}
+                    persistentScrollbar={true}
                 />
             </View>
         </View>
@@ -392,8 +391,6 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
 }) => {
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
-    const modelName = getSessionModelName(session);
-    const sessionName = getSessionName(session, { withModelPrefix: true });
     const sessionSubtitle = getSessionSubtitle(session);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
@@ -517,10 +514,6 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const lastClickTimeRef = React.useRef(0);
     const DOUBLE_CLICK_DELAY = 300; // ms
 
-    const avatarId = React.useMemo(() => {
-        return getSessionAvatarId(session);
-    }, [session]);
-
     // Handle click on title - detect double click for renaming
     const handleTitleClick = React.useCallback(() => {
         if (!isWeb) return;
@@ -636,18 +629,14 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 }}
             >
                 <View style={styles.avatarContainer}>
-                    <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
-                    {session.draft && (
-                        <View style={styles.draftIconContainer}>
-                            <Ionicons
-                                name="create-outline"
-                                size={12}
-                                style={styles.draftIconOverlay}
-                            />
-                        </View>
-                    )}
+                    <SessionVirtualAvatar
+                        sessionId={session.id}
+                        size={48}
+                        monochrome={!sessionStatus.isConnected}
+                        flavor={session.metadata?.flavor}
+                    />
                 </View>
-                <View style={styles.sessionContent}>
+                <View style={[styles.sessionContent, isWeb && { paddingRight: 72 }]}>
                     {/* Title line */}
                     <View style={styles.sessionTitleRow}>
                         {isRenaming && isWeb ? (
@@ -675,15 +664,14 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                                     pressed && { opacity: 0.7 }
                                 ]}
                             >
-                                <Text
-                                    style={[
+                                <SessionNameWithModelBadge
+                                    session={session}
+                                    numberOfLines={1}
+                                    titleStyle={[
                                         styles.sessionTitle,
                                         sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
                                     ]}
-                                    numberOfLines={1}
-                                >
-                                    {sessionName}
-                                </Text>
+                                />
                             </Pressable>
                         )}
                     </View>
@@ -704,6 +692,9 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                         ]}>
                             {sessionStatus.statusText}
                         </Text>
+                        <View style={{ marginLeft: 'auto' }}>
+                            <SessionModelBadge session={session} isConnected={sessionStatus.isConnected} />
+                        </View>
                     </View>
                 </View>
             </Pressable>

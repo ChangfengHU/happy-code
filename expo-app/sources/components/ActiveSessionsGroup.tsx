@@ -5,8 +5,7 @@ import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome, getSessionModelName } from '@/utils/sessionUtils';
-import { Avatar } from './Avatar';
+import { getSessionName, useSessionStatus, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { useAllMachines, useSetting } from '@/sync/storage';
@@ -25,6 +24,14 @@ import { HappyError } from '@/utils/errors';
 import { sessionDelete } from '@/sync/ops';
 import { apiSocket } from '@/sync/apiSocket';
 import { sync } from '@/sync/sync';
+import { SessionNameWithModelBadge } from '@/components/SessionNameWithModelBadge';
+import { SessionVirtualAvatar } from '@/components/SessionVirtualAvatar';
+
+function resolveSessionAgentType(flavor?: string | null): 'claude' | 'codex' | 'gemini' {
+    if (flavor === 'codex' || flavor === 'gpt' || flavor === 'openai') return 'codex';
+    if (flavor === 'gemini') return 'gemini';
+    return 'claude';
+}
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -87,7 +94,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         borderBottomColor: theme.colors.divider,
     },
     sessionRowSelected: {
-        backgroundColor: theme.colors.surfaceSelected,
+        backgroundColor: theme.dark
+            ? '#2C2D33'
+            : Platform.select({ web: '#D3E1F8', default: '#D6DDED' }),
+        borderWidth: 1,
+        borderColor: theme.dark ? '#596074' : '#9FB5DE',
+        borderLeftWidth: 3,
+        borderLeftColor: theme.dark ? '#7FA2FF' : '#2F6FDB',
     },
     sessionContent: {
         flex: 1,
@@ -240,6 +253,25 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     actionButtonIconDestructive: {
         color: '#ef4444',
+    },
+    persistentCopyButton: {
+        position: 'absolute',
+        right: 8,
+        bottom: 8,
+        width: 30,
+        height: 30,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.surface,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    persistentCopyButtonPressed: {
+        backgroundColor: theme.colors.divider,
     },
     titleInput: {
         fontSize: 15,
@@ -397,8 +429,6 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
 const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
-    const modelName = getSessionModelName(session);
-    const sessionName = getSessionName(session, { withModelPrefix: true });
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
@@ -417,6 +447,80 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
         }
+    });
+
+    const [duplicatingSession, performDuplicate] = useHappyAction(async () => {
+        const machineId = session.metadata?.machineId;
+        const directory = session.metadata?.path?.trim();
+        if (!machineId) {
+            throw new HappyError(t('newSession.noMachineSelected'), false);
+        }
+        if (!directory) {
+            throw new HappyError(t('newSession.noPathSelected'), false);
+        }
+
+        const agent = resolveSessionAgentType(session.metadata?.flavor);
+        const model =
+            session.modelMode && session.modelMode !== 'default'
+                ? session.modelMode
+                : undefined;
+        const reasoningEffort =
+            agent === 'codex' ? (session.codexReasoningEffort || undefined) : undefined;
+
+        const spawnSession = async (approvedNewDirectoryCreation: boolean): Promise<string | null> => {
+            const result = await machineSpawnNewSession({
+                machineId,
+                directory,
+                approvedNewDirectoryCreation,
+                agent,
+                model,
+                reasoningEffort,
+            });
+
+            if (result.type === 'success') {
+                return result.sessionId;
+            }
+
+            if (result.type === 'requestToApproveDirectoryCreation') {
+                const confirmed = await Modal.confirm(
+                    t('newSession.directoryDoesNotExist'),
+                    t('newSession.createDirectoryConfirm', { directory: result.directory }),
+                    {
+                        cancelText: t('common.cancel'),
+                        confirmText: t('common.create'),
+                    }
+                );
+
+                if (!confirmed) {
+                    return null;
+                }
+
+                return spawnSession(true);
+            }
+
+            if (result.type === 'error') {
+                throw new HappyError(result.errorMessage, false);
+            }
+
+            return null;
+        };
+
+        const newSessionId = await spawnSession(false);
+        if (!newSessionId) {
+            return;
+        }
+
+        if (session.permissionMode) {
+            storage.getState().updateSessionPermissionMode(newSessionId, session.permissionMode);
+        }
+        if (session.modelMode) {
+            storage.getState().updateSessionModelMode(newSessionId, session.modelMode);
+        }
+        if (session.codexReasoningEffort) {
+            storage.getState().updateSessionCodexReasoningEffort(newSessionId, session.codexReasoningEffort);
+        }
+
+        navigateToSession(newSessionId);
     });
 
     const handleArchive = React.useCallback(() => {
@@ -452,6 +556,11 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
             }
         });
     }, [performDelete]);
+
+    const handleDuplicate = React.useCallback(() => {
+        swipeableRef.current?.close();
+        performDuplicate();
+    }, [performDuplicate]);
 
     // Renaming state
     const [isRenaming, setIsRenaming] = React.useState(false);
@@ -551,10 +660,42 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
     // Hover state for web
     const [isHovered, setIsHovered] = React.useState(false);
+    const isMobileWeb = isWeb && !isTablet;
+    const hoverHideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const suppressNextPressRef = React.useRef(false);
 
-    const avatarId = React.useMemo(() => {
-        return getSessionAvatarId(session);
-    }, [session]);
+    const clearHoverHideTimer = React.useCallback(() => {
+        if (hoverHideTimerRef.current !== null) {
+            clearTimeout(hoverHideTimerRef.current);
+            hoverHideTimerRef.current = null;
+        }
+    }, []);
+
+    const showHoverActions = React.useCallback(() => {
+        clearHoverHideTimer();
+        setIsHovered(true);
+    }, [clearHoverHideTimer]);
+
+    const scheduleHideHoverActions = React.useCallback(() => {
+        clearHoverHideTimer();
+        if (isMobileWeb) {
+            hoverHideTimerRef.current = setTimeout(() => {
+                setIsHovered(false);
+                hoverHideTimerRef.current = null;
+            }, 3000);
+            return;
+        }
+        setIsHovered(false);
+    }, [clearHoverHideTimer, isMobileWeb]);
+
+    React.useEffect(() => {
+        return () => {
+            clearHoverHideTimer();
+        };
+    }, [clearHoverHideTimer]);
+
+    const showArchiveDeleteButtons = isHovered;
+    const hoverActionHitSlop = isMobileWeb ? 10 : 4;
 
     const itemContent = (
         <View
@@ -564,8 +705,8 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 selected && styles.sessionRowSelected,
                 isWeb && { position: 'relative' }
             ]}
-            onPointerEnter={isWeb ? () => setIsHovered(true) : undefined}
-            onPointerLeave={isWeb ? () => setIsHovered(false) : undefined}
+            onPointerEnter={isWeb ? showHoverActions : undefined}
+            onPointerLeave={isWeb ? scheduleHideHoverActions : undefined}
         >
             <Pressable
                 style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
@@ -575,17 +716,31 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                         navigateToSession(session.id);
                     }
                 }}
+                onLongPress={isMobileWeb ? () => {
+                    suppressNextPressRef.current = true;
+                    showHoverActions();
+                    scheduleHideHoverActions();
+                } : undefined}
                 onPress={() => {
                     if (isRenaming) return;
+                    if (suppressNextPressRef.current) {
+                        suppressNextPressRef.current = false;
+                        return;
+                    }
                     if (!isTablet) {
                         navigateToSession(session.id);
                     }
                 }}
             >
                 <View style={styles.avatarContainer}>
-                    <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                    <SessionVirtualAvatar
+                        sessionId={session.id}
+                        size={48}
+                        monochrome={!sessionStatus.isConnected}
+                        flavor={session.metadata?.flavor}
+                    />
                 </View>
-                <View style={styles.sessionContent}>
+                <View style={[styles.sessionContent, isMobileWeb && { paddingRight: 44 }]}>
                     {/* Title line */}
                     <View style={styles.sessionTitleRow}>
                         {isRenaming && isWeb ? (
@@ -613,15 +768,15 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                                     pressed && { opacity: 0.7 }
                                 ]}
                             >
-                                <Text
-                                    style={[
+                                <SessionNameWithModelBadge
+                                    session={session}
+                                    numberOfLines={1}
+                                    isConnected={sessionStatus.isConnected}
+                                    titleStyle={[
                                         styles.sessionTitle,
                                         sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
                                     ]}
-                                    numberOfLines={2}
-                                >
-                                    {sessionName}
-                                </Text>
+                                />
                             </Pressable>
                         )}
                     </View>
@@ -684,17 +839,60 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 </View>
             </Pressable>
 
+            {isMobileWeb && (
+                <Pressable
+                    style={({ pressed }) => [
+                        styles.persistentCopyButton,
+                        pressed && styles.persistentCopyButtonPressed
+                    ]}
+                    onPress={handleDuplicate}
+                    disabled={archivingSession || deletingSession || duplicatingSession}
+                    hitSlop={10}
+                >
+                    {duplicatingSession ? (
+                        <ActivityIndicator size="small" color={styles.actionButtonIcon.color} />
+                    ) : (
+                        <Ionicons
+                            name="copy-outline"
+                            size={16}
+                            style={styles.actionButtonIcon}
+                        />
+                    )}
+                </Pressable>
+            )}
+
             {/* Hover actions for web */}
             {isWeb && (
-                <View style={[styles.hoverActionsContainer, isHovered && styles.hoverActionsVisible]}>
+                <View style={[styles.hoverActionsContainer, showArchiveDeleteButtons && styles.hoverActionsVisible]}>
+                    {!isMobileWeb && (
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.actionButton,
+                                pressed && styles.actionButtonPressed
+                            ]}
+                            onPress={handleDuplicate}
+                            disabled={archivingSession || deletingSession || duplicatingSession}
+                            hitSlop={hoverActionHitSlop}
+                        >
+                            {duplicatingSession ? (
+                                <ActivityIndicator size="small" color={styles.actionButtonIcon.color} />
+                            ) : (
+                                <Ionicons
+                                    name="copy-outline"
+                                    size={16}
+                                    style={styles.actionButtonIcon}
+                                />
+                            )}
+                        </Pressable>
+                    )}
                     <Pressable
                         style={({ pressed }) => [
                             styles.actionButton,
                             pressed && styles.actionButtonPressed
                         ]}
                         onPress={handleArchive}
-                        disabled={archivingSession || deletingSession}
-                        hitSlop={4}
+                        disabled={archivingSession || deletingSession || duplicatingSession}
+                        hitSlop={hoverActionHitSlop}
                     >
                         {archivingSession ? (
                             <ActivityIndicator size="small" color={styles.actionButtonIcon.color} />
@@ -713,8 +911,8 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             pressed && styles.actionButtonDestructivePressed
                         ]}
                         onPress={handleDelete}
-                        disabled={deletingSession || archivingSession}
-                        hitSlop={4}
+                        disabled={deletingSession || archivingSession || duplicatingSession}
+                        hitSlop={hoverActionHitSlop}
                     >
                         {deletingSession ? (
                             <ActivityIndicator size="small" color={styles.actionButtonIconDestructive.color} />

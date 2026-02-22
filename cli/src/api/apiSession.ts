@@ -1,7 +1,7 @@
 import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
-import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
+import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToClientEvents, Session, Update, UserContent, UserImageContent, UserInputPart, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { configuration } from '@/configuration';
@@ -11,6 +11,101 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { DirectoryCache } from '../modules/common/DirectoryCache';
+
+function normalizeClaudeImageBlock(block: any): UserImageContent | null {
+    if (!block || typeof block !== 'object' || block.type !== 'image') {
+        return null;
+    }
+
+    if (typeof block.mimeType === 'string' && (typeof block.data === 'string' || typeof block.url === 'string')) {
+        return {
+            type: 'image',
+            mimeType: block.mimeType,
+            ...(typeof block.data === 'string' ? { data: block.data } : {}),
+            ...(typeof block.url === 'string' ? { url: block.url } : {}),
+            ...(typeof block.name === 'string' ? { name: block.name } : {}),
+            ...(typeof block.width === 'number' ? { width: block.width } : {}),
+            ...(typeof block.height === 'number' ? { height: block.height } : {}),
+            ...(typeof block.size === 'number' ? { size: block.size } : {}),
+        };
+    }
+
+    if (block.source && typeof block.source === 'object') {
+        if (block.source.type === 'base64' && typeof block.source.media_type === 'string' && typeof block.source.data === 'string') {
+            return {
+                type: 'image',
+                mimeType: block.source.media_type,
+                data: block.source.data,
+                ...(typeof block.name === 'string' ? { name: block.name } : {}),
+                ...(typeof block.width === 'number' ? { width: block.width } : {}),
+                ...(typeof block.height === 'number' ? { height: block.height } : {}),
+                ...(typeof block.size === 'number' ? { size: block.size } : {}),
+            };
+        }
+
+        if (block.source.type === 'url' && typeof block.source.url === 'string') {
+            return {
+                type: 'image',
+                mimeType: typeof block.source.media_type === 'string' ? block.source.media_type : 'image/*',
+                url: block.source.url,
+                ...(typeof block.name === 'string' ? { name: block.name } : {}),
+                ...(typeof block.width === 'number' ? { width: block.width } : {}),
+                ...(typeof block.height === 'number' ? { height: block.height } : {}),
+                ...(typeof block.size === 'number' ? { size: block.size } : {}),
+            };
+        }
+    }
+
+    return null;
+}
+
+function normalizeClaudeUserContent(rawContent: unknown): UserContent | null {
+    if (typeof rawContent === 'string') {
+        return {
+            type: 'text',
+            text: rawContent
+        };
+    }
+
+    if (!Array.isArray(rawContent)) {
+        return null;
+    }
+
+    const parts: UserInputPart[] = [];
+    for (const block of rawContent) {
+        if (!block || typeof block !== 'object') {
+            continue;
+        }
+
+        if (block.type === 'tool_result' || block.type === 'tool_use') {
+            return null;
+        }
+
+        if (block.type === 'text' && typeof block.text === 'string') {
+            parts.push({
+                type: 'text',
+                text: block.text
+            });
+            continue;
+        }
+
+        const image = normalizeClaudeImageBlock(block);
+        if (image) {
+            parts.push(image);
+        }
+    }
+
+    if (parts.length === 0) {
+        return null;
+    }
+    if (parts.length === 1) {
+        return parts[0];
+    }
+    return {
+        type: 'input',
+        parts
+    };
+}
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -214,16 +309,28 @@ export class ApiSessionClient extends EventEmitter {
         let content: MessageContent;
 
         // Check if body is already a MessageContent (has role property)
-        if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
-            content = {
-                role: 'user',
-                content: {
-                    type: 'text',
-                    text: body.message.content
-                },
-                meta: {
-                    sentFrom: 'cli'
+        if (body.type === 'user' && body.isSidechain !== true && body.isMeta !== true) {
+            const normalizedUserContent = normalizeClaudeUserContent(body.message.content);
+            if (normalizedUserContent) {
+                content = {
+                    role: 'user',
+                    content: normalizedUserContent,
+                    meta: {
+                        sentFrom: 'cli'
+                    }
                 }
+            } else {
+                // Wrap Claude messages in the expected format
+                content = {
+                    role: 'agent',
+                    content: {
+                        type: 'output',
+                        data: body  // This wraps the entire Claude message
+                    },
+                    meta: {
+                        sentFrom: 'cli'
+                    }
+                };
             }
         } else {
             // Wrap Claude messages in the expected format

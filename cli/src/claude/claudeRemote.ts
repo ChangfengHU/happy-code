@@ -11,7 +11,90 @@ import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
-import type { JsRuntime } from "./runClaude";
+import type { UserContent } from "@/api/types";
+import type { JsRuntime, QueuedClaudeUserMessage } from "./runClaude";
+
+type ClaudeTextBlock = {
+    type: 'text';
+    text: string;
+}
+
+type ClaudeImageBlock = {
+    type: 'image';
+    source: {
+        type: 'base64';
+        media_type: string;
+        data: string;
+    } | {
+        type: 'url';
+        url: string;
+        media_type?: string;
+    };
+}
+
+function mapUserImageToClaudeBlock(image: {
+    mimeType: string;
+    data?: string;
+    url?: string;
+}): ClaudeImageBlock | null {
+    if (image.data) {
+        return {
+            type: 'image',
+            source: {
+                type: 'base64',
+                media_type: image.mimeType,
+                data: image.data,
+            }
+        };
+    }
+    if (image.url) {
+        return {
+            type: 'image',
+            source: {
+                type: 'url',
+                url: image.url,
+                media_type: image.mimeType,
+            }
+        };
+    }
+    return null;
+}
+
+function userContentToClaudePromptContent(content: UserContent): string | Array<ClaudeTextBlock | ClaudeImageBlock> {
+    if (content.type === 'text') {
+        return content.text;
+    }
+    if (content.type === 'image') {
+        const imageBlock = mapUserImageToClaudeBlock(content);
+        return imageBlock ? [imageBlock] : '';
+    }
+
+    const blocks: Array<ClaudeTextBlock | ClaudeImageBlock> = [];
+    for (const part of content.parts) {
+        if (part.type === 'text') {
+            blocks.push({
+                type: 'text',
+                text: part.text,
+            });
+            continue;
+        }
+
+        const imageBlock = mapUserImageToClaudeBlock(part);
+        if (imageBlock) {
+            blocks.push(imageBlock);
+        }
+    }
+
+    const includesImage = blocks.some((block) => block.type === 'image');
+    if (!includesImage) {
+        return blocks
+            .filter((block): block is ClaudeTextBlock => block.type === 'text')
+            .map((block) => block.text)
+            .join('');
+    }
+
+    return blocks;
+}
 
 export async function claudeRemote(opts: {
 
@@ -30,7 +113,7 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
+    nextMessage: () => Promise<{ message: QueuedClaudeUserMessage, mode: EnhancedMode } | null>,
     onReady: () => void,
     isAborted: (toolCallId: string) => boolean,
 
@@ -88,7 +171,7 @@ export async function claudeRemote(opts: {
     }
 
     // Handle special commands
-    const specialCommand = parseSpecialCommand(initial.message);
+    const specialCommand = parseSpecialCommand(initial.message.text);
 
     // Handle /clear command
     if (specialCommand.type === 'clear') {
@@ -151,7 +234,7 @@ export async function claudeRemote(opts: {
         type: 'user',
         message: {
             role: 'user',
-            content: initial.message,
+            content: userContentToClaudePromptContent(initial.message.content),
         },
     });
 
@@ -213,7 +296,13 @@ export async function claudeRemote(opts: {
                     return;
                 }
                 mode = next.mode;
-                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
+                messages.push({
+                    type: 'user',
+                    message: {
+                        role: 'user',
+                        content: userContentToClaudePromptContent(next.message.content)
+                    }
+                });
             }
 
             // Handle tool result
