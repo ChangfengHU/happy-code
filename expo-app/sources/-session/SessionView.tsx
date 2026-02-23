@@ -6,6 +6,7 @@ import { ChatList } from '@/components/ChatList';
 import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { RemoteFileSystemPanel } from '@/components/RemoteFileSystemPanel';
+import { RemoteTerminalPanel } from '@/components/RemoteTerminalPanel';
 import { FileEditor } from '@/components/FileEditor';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
@@ -32,7 +33,8 @@ import { ActivityIndicator, Animated, Dimensions, PanResponder, Platform, Pressa
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 
-const resolveAgentType = (flavor?: string | null): 'claude' | 'codex' | 'gemini' => {
+const resolveAgentType = (flavor?: string | null): 'claude' | 'codex' | 'gemini' | 'copilot' => {
+    if (flavor === 'copilot') return 'copilot';
     if (flavor === 'codex' || flavor === 'gpt' || flavor === 'openai') return 'codex';
     if (flavor === 'gemini') return 'gemini';
     return 'claude';
@@ -205,6 +207,7 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
     const isCodexSession = resolvedAgentType === 'codex';
     // Get model mode from session object - for Gemini sessions use explicit model, default to gemini-2.5-pro
     const isGeminiSession = resolvedAgentType === 'gemini';
+    const isCopilotSession = resolvedAgentType === 'copilot';
     const modelMode = session.modelMode || (isGeminiSession ? 'gemini-2.5-pro' : 'default');
     const codexReasoningEffort = session.codexReasoningEffort || 'xhigh';
     const sessionStatus = useSessionStatus(session);
@@ -217,6 +220,7 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
     const [isFilePanelExpanded, setIsFilePanelExpanded] = React.useState(false);
     const [selectedFilePath, setSelectedFilePath] = React.useState<string | null>(null);
     const [selectedFileName, setSelectedFileName] = React.useState<string>('');
+    const [isTerminalOpen, setIsTerminalOpen] = React.useState(false);
     const showFilePanel = isTablet || Platform.OS === 'web';
 
     // Use draft hook for auto-saving message drafts
@@ -248,10 +252,10 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
     }, [sessionId]);
 
     React.useEffect(() => {
-        if ((isCodexSession || isGeminiSession) && permissionMode !== 'yolo') {
+        if ((isCodexSession || isGeminiSession || isCopilotSession) && permissionMode !== 'yolo') {
             storage.getState().updateSessionPermissionMode(sessionId, 'yolo');
         }
-    }, [isCodexSession, isGeminiSession, permissionMode, sessionId]);
+    }, [isCodexSession, isGeminiSession, isCopilotSession, permissionMode, sessionId]);
 
     const handleSwitchPath = React.useCallback(async (pathToUse: string) => {
         const machineId = session.metadata?.machineId;
@@ -603,6 +607,13 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
                             setSelectedFileName(node.name);
                         }}
                         panelWidth={280}
+                        onTerminalOpen={() => {
+                            setIsTerminalOpen(true);
+                            // Close file editor when opening terminal
+                            setSelectedFilePath(null);
+                            setSelectedFileName('');
+                        }}
+                        flavor={session.metadata?.flavor}
                     />
 
                     {/* 文件编辑器 - 当选择了文件时显示，可拖拽调整宽度 */}
@@ -616,6 +627,17 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
                                 setSelectedFileName('');
                             }}
                         />
+                    )}
+
+                    {/* 远程终端面板 - 当终端打开且没有文件编辑器时显示 */}
+                    {isTerminalOpen && !selectedFilePath && Platform.OS === 'web' && (
+                        <View style={{ width: 500, height: '100%' as any }}>
+                            <RemoteTerminalPanel
+                                sessionId={sessionId}
+                                workDir={session.metadata?.path || '.'}
+                                onClose={() => setIsTerminalOpen(false)}
+                            />
+                        </View>
                     )}
                 </>
             )}

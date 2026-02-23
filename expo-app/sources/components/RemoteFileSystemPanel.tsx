@@ -26,6 +26,10 @@ interface RemoteFileSystemPanelProps {
     onFileSelect?: (path: string, node: TreeNode) => void;
     /** 面板宽度 */
     panelWidth?: number;
+    /** 打开终端回调 */
+    onTerminalOpen?: () => void;
+    /** Agent 类型 */
+    flavor?: string | null;
 }
 
 interface SearchResult {
@@ -44,6 +48,8 @@ export const RemoteFileSystemPanel = React.memo(({
     onExpandedChange,
     onFileSelect,
     panelWidth = 320,
+    onTerminalOpen,
+    flavor,
 }: RemoteFileSystemPanelProps) => {
     const { theme } = useUnistyles();
 
@@ -285,18 +291,49 @@ export const RemoteFileSystemPanel = React.memo(({
         loadDirectoryTree();
     }, [loadDirectoryTree]);
 
-    // 收起状态 - 只显示边缘按钮
+    // 收起状态 - 显示三个竖排的边缘按钮
     if (!isExpanded) {
+        // Agent icon emoji mapping
+        const agentIcons: Record<string, string> = {
+            'claude': '🤖',
+            'gpt': '⚙️',
+            'openai': '⚙️',
+            'gemini': '✨',
+            'copilot': '🔨',
+        };
+
         return (
-            <Pressable
-                onPress={toggleExpanded}
+            <View
                 style={[
                     styles.collapsedButton,
                     { backgroundColor: theme.colors.surfaceHigh },
                 ]}
             >
-                <Ionicons name="folder-outline" size={20} color={theme.colors.textSecondary} />
-            </Pressable>
+                {/* 文件夹按钮 */}
+                <Pressable
+                    onPress={toggleExpanded}
+                    style={styles.collapsedIconButton}
+                    hitSlop={8}
+                >
+                    <Ionicons name="folder-outline" size={20} color={theme.colors.textSecondary} />
+                </Pressable>
+
+                {/* 终端按钮 */}
+                <Pressable
+                    onPress={onTerminalOpen}
+                    style={styles.collapsedIconButton}
+                    hitSlop={8}
+                >
+                    <Ionicons name="terminal" size={20} color="#00C7BE" />
+                </Pressable>
+
+                {/* Agent 类型徽章 */}
+                <View style={styles.collapsedIconButton}>
+                    <Text style={{ fontSize: 20 }}>
+                        {agentIcons[flavor || 'claude'] || '🤖'}
+                    </Text>
+                </View>
+            </View>
         );
     }
 
@@ -335,6 +372,11 @@ export const RemoteFileSystemPanel = React.memo(({
                     </Text>
                 </View>
                 <View style={styles.headerActions}>
+                    {Platform.OS === 'web' && onTerminalOpen && (
+                        <Pressable onPress={onTerminalOpen} style={styles.headerButton} hitSlop={8}>
+                            <Ionicons name="terminal-outline" size={18} color={theme.colors.textSecondary} />
+                        </Pressable>
+                    )}
                     <Pressable onPress={handleRefresh} style={styles.headerButton} hitSlop={8}>
                         <Ionicons name="refresh" size={18} color={theme.colors.textSecondary} />
                     </Pressable>
@@ -514,7 +556,8 @@ const styles = StyleSheet.create((theme) => ({
         position: 'absolute',
         right: 0,
         top: 20,
-        padding: 8,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
         borderTopLeftRadius: 8,
         borderBottomLeftRadius: 8,
         shadowColor: '#000',
@@ -523,6 +566,17 @@ const styles = StyleSheet.create((theme) => ({
         shadowRadius: 4,
         elevation: 4,
         zIndex: 100,
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 8,
+    },
+    collapsedIconButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: theme.colors.groupped.background,
     },
     header: {
         flexDirection: 'row',
