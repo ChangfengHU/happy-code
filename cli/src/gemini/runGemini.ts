@@ -34,7 +34,7 @@ import type { ApiSessionClient } from '@/api/apiSession';
 
 import { createGeminiBackend } from '@/agent/factories/gemini';
 import type { AgentBackend, AgentMessage } from '@/agent';
-import { GeminiDisplay } from '@/ui/ink/GeminiDisplay';
+import { AgentDisplay } from '@/ui/ink/AgentDisplay';
 import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
 import { GeminiDiffProcessor } from '@/gemini/utils/diffProcessor';
@@ -572,8 +572,9 @@ export async function runGemini(opts: {
       // Read displayedModel from closure - it will have latest value on each render
       const currentModelValue = displayedModel || DEFAULT_GEMINI_MODEL;
       // Don't log on every render to avoid spam - only log when model changes
-      return React.createElement(GeminiDisplay, {
+      return React.createElement(AgentDisplay, {
         messageBuffer,
+        agent: 'gemini',
         logPath: process.env.DEBUG ? logger.getLogPath() : undefined,
         currentModel: currentModelValue,
         onExit: async () => {
