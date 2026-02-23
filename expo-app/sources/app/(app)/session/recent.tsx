@@ -6,12 +6,14 @@ import { Session } from '@/sync/storageTypes';
 import { Avatar } from '@/components/Avatar';
 import { getSessionName, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Pressable } from 'react-native';
 import { t } from '@/text';
+import { Ionicons } from '@expo/vector-icons';
+import { useOpenTerminal } from '@/hooks/useOpenTerminal';
 
 interface SessionHistoryItem {
     type: 'session' | 'date-header';
@@ -81,6 +83,23 @@ const styles = StyleSheet.create((theme) => ({
         fontSize: 13,
         color: theme.colors.textSecondary,
         ...Typography.default(),
+    },
+    sessionActions: {
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 8,
+        marginLeft: 12,
+    },
+    actionButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: theme.colors.groupped.background,
+    },
+    actionButtonActive: {
+        backgroundColor: 'rgba(0, 122, 255, 0.15)',
     },
     emptyContainer: {
         flex: 1,
@@ -164,6 +183,7 @@ export default function SessionHistory() {
     const safeArea = useSafeAreaInsets();
     const allSessions = useAllSessions();
     const navigateToSession = useNavigateToSession();
+    const { open: openTerminal } = useOpenTerminal();
     
     const groupedItems = React.useMemo(() => {
         return groupSessionsByDate(allSessions);
@@ -185,6 +205,7 @@ export default function SessionHistory() {
             const sessionName = getSessionName(session);
             const sessionSubtitle = getSessionSubtitle(session);
             const avatarId = getSessionAvatarId(session);
+            const flavor = session.metadata?.flavor || 'claude';
             
             // Determine card styling based on position within date group
             const prevItem = index > 0 ? groupedItems[index - 1] : null;
@@ -193,6 +214,15 @@ export default function SessionHistory() {
             const isFirst = prevItem?.type === 'date-header';
             const isLast = nextItem?.type === 'date-header' || nextItem == null;
             const isSingle = isFirst && isLast;
+            
+            // Agent icon emoji mapping
+            const agentIcons: Record<string, string> = {
+                'claude': '🤖',
+                'gpt': '⚙️',
+                'openai': '⚙️',
+                'gemini': '✨',
+                'copilot': '🔨',
+            };
             
             return (
                 <Pressable
@@ -213,12 +243,31 @@ export default function SessionHistory() {
                             {sessionSubtitle}
                         </Text>
                     </View>
+                    <View style={styles.sessionActions}>
+                        <Pressable style={styles.actionButton} onPress={(e) => {
+                            e.stopPropagation?.();
+                            // TODO: Open file browser for this session
+                        }}>
+                            <Ionicons name="folder" size={20} color="#0A84FF" />
+                        </Pressable>
+                        <Pressable style={styles.actionButton} onPress={(e) => {
+                            e.stopPropagation?.();
+                            openTerminal();
+                        }}>
+                            <Ionicons name="terminal" size={20} color="#00C7BE" />
+                        </Pressable>
+                        <View style={styles.actionButton}>
+                            <Text style={{ fontSize: 20 }}>
+                                {agentIcons[flavor] || '🤖'}
+                            </Text>
+                        </View>
+                    </View>
                 </Pressable>
             );
         }
         
         return null;
-    }, [groupedItems, navigateToSession]);
+    }, [groupedItems, navigateToSession, openTerminal]);
     
     const keyExtractor = React.useCallback((item: SessionHistoryItem, index: number) => {
         if (item.type === 'date-header') {
