@@ -412,6 +412,7 @@ export const zhHans: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            copilot: 'Copilot',
         },
         model: {
             title: '模型',
@@ -447,6 +448,10 @@ export const zhHans: TranslationStructure = {
             badgeSafeYolo: '安全 YOLO',
             badgeYolo: 'YOLO',
         },
+        copilotPermissionMode: {
+            title: 'COPILOT 权限模式',
+            yolo: 'YOLO',
+        },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
         },
@@ -454,7 +459,7 @@ export const zhHans: TranslationStructure = {
             fileLabel: '文件',
             folderLabel: '文件夹',
         },
-        noMachinesAvailable: '无设备',
+        noMachinesAvailable: '暂无可用机型',
         refreshMachines: '刷新',
     },
 

@@ -5,13 +5,14 @@ interface CLIAvailability {
     claude: boolean | null; // null = unknown/loading, true = installed, false = not installed
     codex: boolean | null;
     gemini: boolean | null;
+    copilot: boolean | null;
     isDetecting: boolean; // Explicit loading state
     timestamp: number; // When detection completed
     error?: string; // Detection error message (for debugging)
 }
 
 /**
- * Detects which CLI tools (claude, codex, gemini) are installed on a remote machine.
+ * Detects which CLI tools (claude, codex, gemini, copilot) are installed on a remote machine.
  *
  * NON-BLOCKING: Detection runs asynchronously in useEffect. UI shows all profiles
  * while detection is in progress, then updates when results arrive.
@@ -24,7 +25,7 @@ interface CLIAvailability {
  * User discovers CLI availability when attempting to spawn.
  *
  * @param machineId - The machine to detect CLIs on (null = no detection)
- * @returns CLI availability status for claude, codex, and gemini
+ * @returns CLI availability status for claude, codex, gemini, and copilot
  *
  * @example
  * const cliAvailability = useCLIDetection(selectedMachineId);
@@ -37,13 +38,14 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
         claude: null,
         codex: null,
         gemini: null,
+        copilot: null,
         isDetecting: false,
         timestamp: 0,
     });
 
     useEffect(() => {
         if (!machineId) {
-            setAvailability({ claude: null, codex: null, gemini: null, isDetecting: false, timestamp: 0 });
+            setAvailability({ claude: null, codex: null, gemini: null, copilot: null, isDetecting: false, timestamp: 0 });
             return;
         }
 
@@ -55,12 +57,13 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
             console.log('[useCLIDetection] Starting detection for machineId:', machineId);
 
             try {
-                // Use single bash command to check both CLIs efficiently
+                // Use single bash command to check all CLIs efficiently
                 // command -v is POSIX compliant and more reliable than which
                 const result = await machineBash(
                     machineId,
                     '(command -v claude >/dev/null 2>&1 && echo "claude:true" || echo "claude:false") && ' +
-                    '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false")',
+                    '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false") && ' +
+                    '(gh copilot --version >/dev/null 2>&1 && echo "copilot:true" || echo "copilot:false")',
                     '/'
                 );
 
@@ -68,14 +71,14 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                 console.log('[useCLIDetection] Result:', { success: result.success, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr });
 
                 if (result.success && result.exitCode === 0) {
-                    // Parse output: "claude:true\ncodex:false\ngemini:false"
+                    // Parse output: "claude:true\ncodex:false\ngemini:false\ncopilot:false"
                     const lines = result.stdout.trim().split('\n');
-                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean } = { gemini: true };
+                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean; copilot?: boolean } = { gemini: true };
 
                     lines.forEach(line => {
                         const [cli, status] = line.split(':');
                         if (cli && status) {
-                            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini'] = status.trim() === 'true';
+                            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini' | 'copilot'] = status.trim() === 'true';
                         }
                     });
 
@@ -84,6 +87,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                         claude: cliStatus.claude ?? null,
                         codex: cliStatus.codex ?? null,
                         gemini: cliStatus.gemini ?? null,
+                        copilot: cliStatus.copilot ?? null,
                         isDetecting: false,
                         timestamp: Date.now(),
                     });
@@ -94,6 +98,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                         claude: null,
                         codex: null,
                         gemini: null,
+                        copilot: null,
                         isDetecting: false,
                         timestamp: 0,
                         error: `Detection failed: ${result.stderr || 'Unknown error'}`,
@@ -108,6 +113,7 @@ export function useCLIDetection(machineId: string | null): CLIAvailability {
                     claude: null,
                     codex: null,
                     gemini: null,
+                    copilot: null,
                     isDetecting: false,
                     timestamp: 0,
                     error: error instanceof Error ? error.message : 'Detection error',
@@ -150,6 +156,7 @@ export function useBatchCLIDetection(machines: Array<{ id: string }>): Record<st
                         claude: null,
                         codex: null,
                         gemini: null,
+                        copilot: null,
                         isDetecting: true,
                         timestamp: 0
                     };
@@ -164,7 +171,8 @@ export function useBatchCLIDetection(machines: Array<{ id: string }>): Record<st
                 const result = await machineBash(
                     machineId,
                     '(command -v claude >/dev/null 2>&1 && echo "claude:true" || echo "claude:false") && ' +
-                    '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false")',
+                    '(command -v codex >/dev/null 2>&1 && echo "codex:true" || echo "codex:false") && ' +
+                    '(gh copilot --version >/dev/null 2>&1 && echo "copilot:true" || echo "copilot:false")',
                     '/'
                 );
 
@@ -172,11 +180,11 @@ export function useBatchCLIDetection(machines: Array<{ id: string }>): Record<st
 
                 if (result.success && result.exitCode === 0) {
                     const lines = result.stdout.trim().split('\n');
-                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean } = { gemini: true };
+                    const cliStatus: { claude?: boolean; codex?: boolean; gemini?: boolean; copilot?: boolean } = { gemini: true };
                     lines.forEach(line => {
                         const [cli, status] = line.split(':');
                         if (cli && status) {
-                            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini'] = status.trim() === 'true';
+                            cliStatus[cli.trim() as 'claude' | 'codex' | 'gemini' | 'copilot'] = status.trim() === 'true';
                         }
                     });
 
@@ -186,6 +194,7 @@ export function useBatchCLIDetection(machines: Array<{ id: string }>): Record<st
                             claude: cliStatus.claude ?? null,
                             codex: cliStatus.codex ?? null,
                             gemini: cliStatus.gemini ?? null,
+                            copilot: cliStatus.copilot ?? null,
                             isDetecting: false,
                             timestamp: Date.now(),
                         }
@@ -198,6 +207,7 @@ export function useBatchCLIDetection(machines: Array<{ id: string }>): Record<st
                             claude: null,
                             codex: null,
                             gemini: null,
+                            copilot: null,
                             isDetecting: false,
                             timestamp: 0,
                             error: result.stderr || 'Detection failed'
@@ -212,6 +222,7 @@ export function useBatchCLIDetection(machines: Array<{ id: string }>): Record<st
                         claude: null,
                         codex: null,
                         gemini: null,
+                        copilot: null,
                         isDetecting: false,
                         timestamp: 0,
                         error: error instanceof Error ? error.message : 'Network error'

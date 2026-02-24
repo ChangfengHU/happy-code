@@ -122,7 +122,7 @@ export interface SpawnSessionOptions {
     directory: string;
     sessionId?: string;
     approvedNewDirectoryCreation?: boolean;
-    agent?: 'claude' | 'codex' | 'gemini';
+    agent?: 'claude' | 'codex' | 'gemini' | 'copilot';
     token?: string;
     reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
     environmentVariables?: {
@@ -533,4 +533,168 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
             };
         }
     });
+
+    // ============================================================
+    // Terminal Session Management
+    // ============================================================
+    //
+    // Interactive terminal sessions using child_process.spawn with
+    // polling-based I/O (compatible with existing session RPC pattern).
+    // Output is buffered server-side; client polls via readTerminal.
+
+    interface TerminalSession {
+        id: string;
+        process: import('child_process').ChildProcess;
+        outputBuffer: string;
+        alive: boolean;
+        exitCode: number | null;
+    }
+
+    const terminalSessions = new Map<string, TerminalSession>();
+    const TERMINAL_BUFFER_MAX = 200000; // Max chars to retain in output buffer
+
+    // createTerminal - spawn interactive shell
+    rpcHandlerManager.registerHandler<{ cwd?: string; shell?: string }, { success: boolean; terminalId?: string; error?: string }>('createTerminal', async (data) => {
+        logger.debug('[Terminal] Create request, cwd:', data.cwd);
+
+        try {
+            const cwd = data.cwd || workingDirectory;
+            const shell = data.shell || process.env.SHELL || '/bin/zsh';
+            const id = Math.random().toString(36).slice(2, 10);
+
+            const child = require('child_process').spawn(shell, ['-i'], {
+                cwd,
+                env: {
+                    ...process.env,
+                    TERM: 'xterm-256color',
+                    COLUMNS: '120',
+                    LINES: '30',
+                },
+                stdio: ['pipe', 'pipe', 'pipe'],
+            });
+
+            const session: TerminalSession = {
+                id,
+                process: child,
+                outputBuffer: '',
+                alive: true,
+                exitCode: null,
+            };
+
+            child.stdout?.on('data', (chunk: Buffer) => {
+                const text = chunk.toString('utf-8');
+                session.outputBuffer += text;
+                // Trim buffer if too large
+                if (session.outputBuffer.length > TERMINAL_BUFFER_MAX) {
+                    session.outputBuffer = session.outputBuffer.slice(-TERMINAL_BUFFER_MAX);
+                }
+            });
+
+            child.stderr?.on('data', (chunk: Buffer) => {
+                const text = chunk.toString('utf-8');
+                session.outputBuffer += text;
+                if (session.outputBuffer.length > TERMINAL_BUFFER_MAX) {
+                    session.outputBuffer = session.outputBuffer.slice(-TERMINAL_BUFFER_MAX);
+                }
+            });
+
+            child.on('exit', (code: number | null) => {
+                session.alive = false;
+                session.exitCode = code;
+                logger.debug(`[Terminal] Session ${id} exited with code ${code}`);
+            });
+
+            child.on('error', (err: Error) => {
+                session.alive = false;
+                session.outputBuffer += `\r\nTerminal error: ${err.message}\r\n`;
+                logger.debug(`[Terminal] Session ${id} error:`, err);
+            });
+
+            terminalSessions.set(id, session);
+            logger.debug(`[Terminal] Created session ${id}, shell: ${shell}, cwd: ${cwd}`);
+
+            return { success: true, terminalId: id };
+        } catch (error) {
+            logger.debug('[Terminal] Failed to create session:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Failed to create terminal' };
+        }
+    });
+
+    // writeTerminal - send input data to terminal
+    rpcHandlerManager.registerHandler<{ terminalId: string; data: string }, { success: boolean; error?: string }>('writeTerminal', async (data) => {
+        const session = terminalSessions.get(data.terminalId);
+        if (!session) {
+            return { success: false, error: 'Terminal session not found' };
+        }
+        if (!session.alive) {
+            return { success: false, error: 'Terminal session has exited' };
+        }
+
+        try {
+            if (session.process.stdin && !session.process.stdin.destroyed) {
+                session.process.stdin.write(data.data);
+            }
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error instanceof Error ? error.message : 'Failed to write to terminal' };
+        }
+    });
+
+    // readTerminal - read buffered output (polling)
+    rpcHandlerManager.registerHandler<{ terminalId: string }, { success: boolean; data?: string; alive?: boolean; exitCode?: number | null; error?: string }>('readTerminal', async (data) => {
+        const session = terminalSessions.get(data.terminalId);
+        if (!session) {
+            return { success: false, error: 'Terminal session not found' };
+        }
+
+        // Drain the buffer
+        const output = session.outputBuffer;
+        session.outputBuffer = '';
+
+        return {
+            success: true,
+            data: output,
+            alive: session.alive,
+            exitCode: session.exitCode,
+        };
+    });
+
+    // resizeTerminal - update terminal dimensions (hint only for pipe-based terminals)
+    rpcHandlerManager.registerHandler<{ terminalId: string; cols: number; rows: number }, { success: boolean; error?: string }>('resizeTerminal', async (data) => {
+        const session = terminalSessions.get(data.terminalId);
+        if (!session) {
+            return { success: false, error: 'Terminal session not found' };
+        }
+
+        // For pipe-based terminals, resize is a hint only (no PTY)
+        // Update the environment for future reference
+        try {
+            if (session.process.stdin && !session.process.stdin.destroyed) {
+                // Send SIGWINCH equivalent via stty if possible
+                session.process.stdin.write(`stty cols ${data.cols} rows ${data.rows}\n`);
+            }
+        } catch {
+            // Resize is best-effort for pipe terminals
+        }
+
+        return { success: true };
+    });
+
+    // killTerminal - terminate terminal session
+    rpcHandlerManager.registerHandler<{ terminalId: string }, { success: boolean; error?: string }>('killTerminal', async (data) => {
+        const session = terminalSessions.get(data.terminalId);
+        if (!session) {
+            return { success: false, error: 'Terminal session not found' };
+        }
+
+        try {
+            session.process.kill('SIGTERM');
+            terminalSessions.delete(data.terminalId);
+            logger.debug(`[Terminal] Killed session ${data.terminalId}`);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error instanceof Error ? error.message : 'Failed to kill terminal' };
+        }
+    });
 }
+

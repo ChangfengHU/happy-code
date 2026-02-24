@@ -409,6 +409,7 @@ export const en = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            copilot: 'Copilot',
         },
         model: {
             title: 'MODEL',
@@ -443,6 +444,10 @@ export const en = {
             badgeReadOnly: 'Read Only',
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
+        },
+        copilotPermissionMode: {
+            title: 'COPILOT PERMISSION MODE',
+            yolo: 'YOLO',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% left`,
@@ -556,6 +561,20 @@ export const en = {
         file: 'File',
         fileEmpty: 'File is empty',
         noChanges: 'No changes to display',
+    },
+    directoryPicker: {
+        title: 'Select Folder',
+        currentFolder: 'Current Folder',
+        currentFolderHint: 'Choose a subfolder or use the current folder',
+        useThisFolder: 'Use this folder',
+        folders: 'Folders',
+        parentFolder: 'Parent folder',
+        loading: 'Loading folders...',
+        empty: 'No subfolders found',
+        loadFailed: 'Failed to load folders',
+        refresh: 'Refresh',
+        pathUnavailable: 'Session path not available',
+        sessionUnavailable: 'Session not available',
     },
 
     settingsVoice: {

@@ -32,8 +32,8 @@ export type AgentMessage =
   | { type: 'fs-edit'; description: string; diff?: string; path?: string }
   | { type: 'terminal-output'; data: string }
   | { type: 'event'; name: string; payload: unknown }
-  | { type: 'token-count'; [key: string]: unknown } // Token count information (format may vary)
-  | { type: 'exec-approval-request'; call_id: string; [key: string]: unknown } // Exec approval request (like Codex exec_approval_request)
+  | { type: 'token-count';[key: string]: unknown } // Token count information (format may vary)
+  | { type: 'exec-approval-request'; call_id: string;[key: string]: unknown } // Exec approval request (like Codex exec_approval_request)
   | { type: 'patch-apply-begin'; call_id: string; auto_approved?: boolean; changes: Record<string, unknown> } // Patch operation begin (like Codex patch_apply_begin)
   | { type: 'patch-apply-end'; call_id: string; stdout?: string; stderr?: string; success: boolean } // Patch operation end (like Codex patch_apply_end)
 
@@ -48,7 +48,7 @@ export interface McpServerConfig {
 export type AgentTransport = 'native-claude' | 'mcp-codex' | 'acp';
 
 /** Agent identifier */
-export type AgentId = 'claude' | 'codex' | 'gemini' | 'opencode' | 'claude-acp' | 'codex-acp';
+export type AgentId = 'claude' | 'codex' | 'gemini' | 'opencode' | 'claude-acp' | 'codex-acp' | 'copilot';
 
 /**
  * Configuration for creating an agent backend
@@ -56,16 +56,16 @@ export type AgentId = 'claude' | 'codex' | 'gemini' | 'opencode' | 'claude-acp' 
 export interface AgentBackendConfig {
   /** Working directory for the agent */
   cwd: string;
-  
+
   /** Name of the agent */
   agentName: AgentId;
-  
+
   /** Transport protocol to use */
   transport: AgentTransport;
-  
+
   /** Environment variables to pass to the agent */
   env?: Record<string, string>;
-  
+
   /** MCP servers to make available to the agent */
   mcpServers?: Record<string, McpServerConfig>;
 }
@@ -75,10 +75,10 @@ export interface AgentBackendConfig {
  */
 export interface AcpAgentConfig extends AgentBackendConfig {
   transport: 'acp';
-  
+
   /** Command to spawn the ACP agent */
   command: string;
-  
+
   /** Arguments for the agent command */
   args?: string[];
 }
@@ -109,7 +109,7 @@ export interface AgentBackend {
    * @returns Promise resolving to session information
    */
   startSession(initialPrompt?: string): Promise<StartSessionResult>;
-  
+
   /**
    * Send a prompt to an existing session.
    * 
@@ -117,28 +117,28 @@ export interface AgentBackend {
    * @param prompt - The user's prompt text
    */
   sendPrompt(sessionId: SessionId, prompt: string): Promise<void>;
-  
+
   /**
    * Cancel the current operation in a session.
    * 
    * @param sessionId - The session to cancel
    */
   cancel(sessionId: SessionId): Promise<void>;
-  
+
   /**
    * Register a handler for agent messages.
    * 
    * @param handler - Function to call when messages are received
    */
   onMessage(handler: AgentMessageHandler): void;
-  
+
   /**
    * Remove a previously registered message handler.
    * 
    * @param handler - The handler to remove
    */
   offMessage?(handler: AgentMessageHandler): void;
-  
+
   /**
    * Respond to a permission request.
    *
@@ -155,7 +155,7 @@ export interface AgentBackend {
    * @param approved - Whether the permission was granted
    */
   respondToPermission?(requestId: string, approved: boolean): Promise<void>;
-  
+
   /**
    * Wait for the current response to complete.
    * Call this after sendPrompt to wait for all chunks to be received.
@@ -163,7 +163,7 @@ export interface AgentBackend {
    * @param timeoutMs - Maximum time to wait in milliseconds (default: 120000)
    */
   waitForResponseComplete?(timeoutMs?: number): Promise<void>;
-  
+
   /**
    * Clean up resources and close the backend.
    */

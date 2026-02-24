@@ -141,7 +141,7 @@ export interface SpawnSessionOptions {
     // (currently consumed by Claude/Codex as --resume <sessionId>)
     resumeSessionId?: string;
     token?: string;
-    agent?: 'codex' | 'claude' | 'gemini';
+    agent?: 'codex' | 'claude' | 'gemini' | 'copilot';
     reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
     // Environment variables from AI backend profile
     // Accepts any environment variables - daemon will pass them to the agent process
@@ -183,7 +183,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             approvedNewDirectoryCreation?: boolean,
             sessionId?: string,
             token?: string,
-            agent?: 'codex' | 'claude' | 'gemini',
+            agent?: 'codex' | 'claude' | 'gemini' | 'copilot',
             reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
             environmentVariables?: Record<string, string>;
             model?: string;
@@ -608,6 +608,105 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
     }
 }
 
+// ============================================================
+// Terminal Session Operations
+// ============================================================
+
+interface CreateTerminalRequest { cwd?: string; shell?: string; }
+interface CreateTerminalResponse { success: boolean; terminalId?: string; error?: string; }
+
+interface WriteTerminalRequest { terminalId: string; data: string; }
+interface WriteTerminalResponse { success: boolean; error?: string; }
+
+interface ReadTerminalRequest { terminalId: string; }
+interface ReadTerminalResponse { success: boolean; data?: string; alive?: boolean; exitCode?: number | null; error?: string; }
+
+interface ResizeTerminalRequest { terminalId: string; cols: number; rows: number; }
+interface ResizeTerminalResponse { success: boolean; error?: string; }
+
+interface KillTerminalRequest { terminalId: string; }
+interface KillTerminalResponse { success: boolean; error?: string; }
+
+/**
+ * Create a new terminal session in the remote machine
+ */
+export async function sessionCreateTerminal(sessionId: string, cwd?: string): Promise<CreateTerminalResponse> {
+    try {
+        const response = await apiSocket.sessionRPC<CreateTerminalResponse, CreateTerminalRequest>(
+            sessionId,
+            'createTerminal',
+            { cwd }
+        );
+        return response;
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+/**
+ * Write data to terminal session (send user input)
+ */
+export async function sessionWriteTerminal(sessionId: string, terminalId: string, data: string): Promise<WriteTerminalResponse> {
+    try {
+        const response = await apiSocket.sessionRPC<WriteTerminalResponse, WriteTerminalRequest>(
+            sessionId,
+            'writeTerminal',
+            { terminalId, data }
+        );
+        return response;
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+/**
+ * Read buffered terminal output (polling)
+ */
+export async function sessionReadTerminal(sessionId: string, terminalId: string): Promise<ReadTerminalResponse> {
+    try {
+        const response = await apiSocket.sessionRPC<ReadTerminalResponse, ReadTerminalRequest>(
+            sessionId,
+            'readTerminal',
+            { terminalId }
+        );
+        return response;
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+/**
+ * Resize terminal dimensions
+ */
+export async function sessionResizeTerminal(sessionId: string, terminalId: string, cols: number, rows: number): Promise<ResizeTerminalResponse> {
+    try {
+        const response = await apiSocket.sessionRPC<ResizeTerminalResponse, ResizeTerminalRequest>(
+            sessionId,
+            'resizeTerminal',
+            { terminalId, cols, rows }
+        );
+        return response;
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
+/**
+ * Kill terminal session
+ */
+export async function sessionKillTerminal(sessionId: string, terminalId: string): Promise<KillTerminalResponse> {
+    try {
+        const response = await apiSocket.sessionRPC<KillTerminalResponse, KillTerminalRequest>(
+            sessionId,
+            'killTerminal',
+            { terminalId }
+        );
+        return response;
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
 // Export types for external use
 export type {
     SessionBashRequest,
@@ -619,5 +718,7 @@ export type {
     SessionGetDirectoryTreeResponse,
     TreeNode,
     SessionRipgrepResponse,
-    SessionKillResponse
+    SessionKillResponse,
+    CreateTerminalResponse,
+    ReadTerminalResponse
 };

@@ -513,7 +513,7 @@ interface NewSessionWizardProps {
     onComplete: (config: {
         sessionType: 'simple' | 'worktree';
         profileId: string | null;
-        agentType: 'claude' | 'codex';
+        agentType: 'claude' | 'codex' | 'gemini' | 'copilot';
         permissionMode: PermissionMode;
         modelMode: ModelMode;
         machineId: string;
@@ -541,14 +541,15 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     // Wizard state
     const [currentStep, setCurrentStep] = useState<WizardStep>('profile');
     const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
-    const [agentType, setAgentType] = useState<'claude' | 'codex'>(() => {
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
+    const [agentType, setAgentType] = useState<'claude' | 'codex' | 'gemini' | 'copilot'>(() => {
+        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex' || lastUsedAgent === 'gemini' || lastUsedAgent === 'copilot') {
             return lastUsedAgent;
         }
         return 'claude';
     });
     const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
         // Always default to yolo-style mode for new sessions, independent of stored CLI settings.
+        if (agentType === 'copilot') return 'yolo';
         return agentType === 'codex' ? 'yolo' : 'bypassPermissions';
     });
     const [modelMode, setModelMode] = useState<ModelMode>('default');
@@ -564,7 +565,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             description: 'Default Claude configuration',
             anthropicConfig: {},
             environmentVariables: [],
-            compatibility: { claude: true, codex: false, gemini: false },
+            compatibility: { claude: true, codex: false, gemini: false, copilot: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -583,7 +584,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: 'deepseek-chat' },
                 { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
             ],
-            compatibility: { claude: true, codex: false, gemini: false },
+            compatibility: { claude: true, codex: false, gemini: false, copilot: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -598,7 +599,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 model: 'gpt-4-turbo',
             },
             environmentVariables: [],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, copilot: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -614,7 +615,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 deploymentName: 'gpt-4-turbo',
             },
             environmentVariables: [],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, copilot: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -630,7 +631,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             environmentVariables: [
                 { name: 'AZURE_OPENAI_API_VERSION', value: '2024-02-15-preview' },
             ],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, copilot: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -645,7 +646,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 model: 'glm-4.6',
             },
             environmentVariables: [],
-            compatibility: { claude: true, codex: false, gemini: false },
+            compatibility: { claude: true, codex: false, gemini: false, copilot: false },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -660,7 +661,29 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 model: 'gpt-4-turbo',
             },
             environmentVariables: [],
-            compatibility: { claude: false, codex: true, gemini: false },
+            compatibility: { claude: false, codex: true, gemini: false, copilot: false },
+            isBuiltIn: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
+        },
+        {
+            id: 'gemini-builtin',
+            name: 'Google Gemini',
+            description: 'Google Gemini Pro/Flash models',
+            environmentVariables: [],
+            compatibility: { claude: false, codex: false, gemini: true, copilot: false },
+            isBuiltIn: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
+        },
+        {
+            id: 'copilot-builtin',
+            name: 'GitHub Copilot',
+            description: 'GitHub Copilot CLI models',
+            environmentVariables: [],
+            compatibility: { claude: false, codex: false, gemini: false, copilot: true },
             isBuiltIn: true,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -735,7 +758,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     };
 
     // Get required fields for profile configuration
-    const getProfileRequiredFields = (profileId: string | null): Array<{key: string, label: string, placeholder: string, isPassword?: boolean}> => {
+    const getProfileRequiredFields = (profileId: string | null): Array<{ key: string, label: string, placeholder: string, isPassword?: boolean }> => {
         if (!profileId) return [];
         const profile = allProfiles.find(p => p.id === profileId);
         if (!profile) return [];
@@ -782,10 +805,14 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             const selectedProfile = allProfiles.find(p => p.id === selectedProfileId);
             if (selectedProfile) {
                 // Auto-select agent type based on profile compatibility
-                if (selectedProfile.compatibility.claude && !selectedProfile.compatibility.codex) {
+                if (selectedProfile.compatibility.claude && !selectedProfile.compatibility.codex && !selectedProfile.compatibility.gemini && !selectedProfile.compatibility.copilot) {
                     setAgentType('claude');
-                } else if (selectedProfile.compatibility.codex && !selectedProfile.compatibility.claude) {
+                } else if (selectedProfile.compatibility.codex && !selectedProfile.compatibility.claude && !selectedProfile.compatibility.gemini && !selectedProfile.compatibility.copilot) {
                     setAgentType('codex');
+                } else if (selectedProfile.compatibility.gemini && !selectedProfile.compatibility.claude && !selectedProfile.compatibility.codex && !selectedProfile.compatibility.copilot) {
+                    setAgentType('gemini');
+                } else if (selectedProfile.compatibility.copilot && !selectedProfile.compatibility.claude && !selectedProfile.compatibility.codex && !selectedProfile.compatibility.gemini) {
+                    setAgentType('copilot');
                 }
 
                 // Sync active profile to CLI
@@ -876,12 +903,19 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const handleUseProfileAsIs = (profile: AIBackendProfile) => {
         setSelectedProfileId(profile.id);
 
-        // Auto-select agent type based on profile compatibility
-        if (profile.compatibility.claude && !profile.compatibility.codex) {
-            setAgentType('claude');
+        // Compute the correct agent type for this profile
+        // IMPORTANT: Cannot rely on setAgentType since React state updates are async
+        let resolvedAgent: 'claude' | 'codex' | 'gemini' | 'copilot' = agentType;
+        if (profile.compatibility.copilot && !profile.compatibility.claude && !profile.compatibility.codex && !profile.compatibility.gemini) {
+            resolvedAgent = 'copilot';
+        } else if (profile.compatibility.gemini && !profile.compatibility.claude && !profile.compatibility.codex) {
+            resolvedAgent = 'gemini';
+        } else if (profile.compatibility.claude && !profile.compatibility.codex) {
+            resolvedAgent = 'claude';
         } else if (profile.compatibility.codex && !profile.compatibility.claude) {
-            setAgentType('codex');
+            resolvedAgent = 'codex';
         }
+        setAgentType(resolvedAgent);
 
         // Get environment variables from profile (no user configuration)
         const environmentVariables = getProfileEnvironmentVariables(profile);
@@ -890,7 +924,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         onComplete({
             sessionType,
             profileId: profile.id,
-            agentType: agentType || (profile.compatibility.claude ? 'claude' : 'codex'),
+            agentType: resolvedAgent,
             permissionMode,
             modelMode,
             machineId: selectedMachineId,
@@ -905,7 +939,12 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         setSelectedProfileId(profile.id);
 
         // Auto-select agent type based on profile compatibility
-        if (profile.compatibility.claude && !profile.compatibility.codex) {
+        // Check copilot/gemini-only profiles first, then claude/codex
+        if (profile.compatibility.copilot && !profile.compatibility.claude && !profile.compatibility.codex && !profile.compatibility.gemini) {
+            setAgentType('copilot');
+        } else if (profile.compatibility.gemini && !profile.compatibility.claude && !profile.compatibility.codex) {
+            setAgentType('gemini');
+        } else if (profile.compatibility.claude && !profile.compatibility.codex) {
             setAgentType('claude');
         } else if (profile.compatibility.codex && !profile.compatibility.claude) {
             setAgentType('codex');
@@ -939,7 +978,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                     description: 'Custom AI profile',
                     anthropicConfig: {},
                     environmentVariables: [],
-                    compatibility: { claude: true, codex: true, gemini: true },
+                    compatibility: { claude: true, codex: true, gemini: true, copilot: true },
                     isBuiltIn: false,
                     createdAt: Date.now(),
                     updatedAt: Date.now(),
@@ -1558,6 +1597,76 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
                             )}
                         </Pressable>
+
+                        <Pressable
+                            style={[
+                                styles.agentOption,
+                                agentType === 'gemini' ? styles.agentOptionSelected : styles.agentOptionUnselected,
+                                selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.gemini && {
+                                    opacity: 0.5,
+                                    backgroundColor: theme.colors.surface
+                                }
+                            ]}
+                            onPress={() => {
+                                if (!selectedProfileId || allProfiles.find(p => p.id === selectedProfileId)?.compatibility.gemini) {
+                                    setAgentType('gemini');
+                                }
+                            }}
+                            disabled={!!(selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.gemini)}
+                        >
+                            <View style={[styles.agentIcon, { backgroundColor: '#4285F4' }]}>
+                                <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>G</Text>
+                            </View>
+                            <View style={styles.agentInfo}>
+                                <Text style={styles.agentName}>Gemini</Text>
+                                <Text style={styles.agentDescription}>
+                                    Google's powerful multimodal AI models
+                                </Text>
+                                {selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.gemini && (
+                                    <Text style={{ fontSize: 12, color: theme.colors.textDestructive, marginTop: 4 }}>
+                                        Not compatible with selected profile
+                                    </Text>
+                                )}
+                            </View>
+                            {agentType === 'gemini' && (
+                                <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
+                            )}
+                        </Pressable>
+
+                        <Pressable
+                            style={[
+                                styles.agentOption,
+                                agentType === 'copilot' ? styles.agentOptionSelected : styles.agentOptionUnselected,
+                                selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.copilot && {
+                                    opacity: 0.5,
+                                    backgroundColor: theme.colors.surface
+                                }
+                            ]}
+                            onPress={() => {
+                                if (!selectedProfileId || allProfiles.find(p => p.id === selectedProfileId)?.compatibility.copilot) {
+                                    setAgentType('copilot');
+                                }
+                            }}
+                            disabled={!!(selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.copilot)}
+                        >
+                            <View style={[styles.agentIcon, { backgroundColor: '#333' }]}>
+                                <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>C</Text>
+                            </View>
+                            <View style={styles.agentInfo}>
+                                <Text style={styles.agentName}>Copilot</Text>
+                                <Text style={styles.agentDescription}>
+                                    GitHub Copilot CLI agent
+                                </Text>
+                                {selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.copilot && (
+                                    <Text style={{ fontSize: 12, color: theme.colors.textDestructive, marginTop: 4 }}>
+                                        Not compatible with selected profile
+                                    </Text>
+                                )}
+                            </View>
+                            {agentType === 'copilot' && (
+                                <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
+                            )}
+                        </Pressable>
                     </View>
                 );
 
@@ -1632,10 +1741,19 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 { value: 'adaptiveUsage', label: 'Adaptive Usage', description: 'Automatically choose model', icon: 'analytics-outline' },
                                 { value: 'sonnet', label: 'Sonnet', description: 'Fast and efficient', icon: 'speedometer-outline' },
                                 { value: 'opus', label: 'Opus', description: 'Most capable model', icon: 'diamond-outline' },
-                            ] as const : [
+                            ] as const : agentType === 'codex' ? [
                                 { value: 'gpt-5-codex-high', label: 'GPT-5 Codex High', description: 'Best for complex coding', icon: 'diamond-outline' },
                                 { value: 'gpt-5-codex-medium', label: 'GPT-5 Codex Medium', description: 'Balanced coding assistance', icon: 'cube-outline' },
                                 { value: 'gpt-5-codex-low', label: 'GPT-5 Codex Low', description: 'Fast coding help', icon: 'speedometer-outline' },
+                            ] as const : agentType === 'gemini' ? [
+                                { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Maximum performance', icon: 'diamond-outline' },
+                                { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'Balanced speed and quality', icon: 'speedometer-outline' },
+                                { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', description: 'Maximum speed', icon: 'flash-outline' },
+                            ] as const : [
+                                { value: 'default', label: 'Default', description: 'GitHub Copilot default', icon: 'cube-outline' },
+                                { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', description: 'Haiku based model', icon: 'speedometer-outline' },
+                                { value: 'gpt-5-mini', label: 'GPT-5 Mini', description: 'Next-gen mini model', icon: 'flash-outline' },
+                                { value: 'gpt-4.1', label: 'GPT-4.1', description: 'Stable GPT-4 based model', icon: 'cube-outline' },
                             ] as const).map((option, index, array) => (
                                 <Item
                                     key={option.value}

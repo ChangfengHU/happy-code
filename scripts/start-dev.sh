@@ -102,6 +102,16 @@ ensure_container() {
   if docker ps --format '{{.Names}}' | grep -q "^${name}\$"; then
     if [[ "${RESTART}" == "1" ]]; then
       docker restart "${name}" >/dev/null
+      # Wait for container to be running after restart
+      local rc=0
+      local rc_max=15
+      while [[ ${rc} -lt ${rc_max} ]]; do
+        if docker ps --format '{{.Names}}' | grep -q "^${name}\$"; then
+          break
+        fi
+        rc=$((rc + 1))
+        sleep 1
+      done
       log_success "${name} 已重启"
     else
       log_success "${name} 已在运行"
@@ -216,6 +226,37 @@ init_minio_bucket() {
 start_server() {
   log_info "准备启动 Server (3005)..."
   wait_for_postgres
+  
+  # 等待数据库连接真正可用（pg_isready 成功后，再用 psql 做实际连接验证）
+  log_info "等待数据库连接完全就绪..."
+  local db_retry=0
+  local db_max=15
+  while [[ ${db_retry} -lt ${db_max} ]]; do
+    if docker exec "${PG_CONTAINER_NAME}" psql -U postgres -d handy -c "SELECT 1" >/dev/null 2>&1; then
+      log_success "数据库连接验证通过"
+      break
+    fi
+    db_retry=$((db_retry + 1))
+    sleep 1
+  done
+  if [[ ${db_retry} -ge ${db_max} ]]; then
+    log_warn "数据库连接验证超时，仍尝试启动 Server..."
+  fi
+  
+  # 额外验证宿主机端口可达（Server 通过 localhost:5432 连接，而非 docker exec）
+  local port_retry=0
+  local port_max=10
+  while [[ ${port_retry} -lt ${port_max} ]]; do
+    if nc -z localhost 5432 >/dev/null 2>&1; then
+      break
+    fi
+    port_retry=$((port_retry + 1))
+    sleep 1
+  done
+  if [[ ${port_retry} -ge ${port_max} ]]; then
+    log_warn "宿主机 5432 端口不可达，Server 启动可能失败"
+  fi
+  
   kill_port 3005
   mkdir -p "${LOG_DIR}" "${TMP_DIR}"
   cd "${ROOT_DIR}/server"

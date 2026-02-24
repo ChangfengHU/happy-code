@@ -18,95 +18,100 @@ import { logger } from '@/ui/logger';
 
 // Environment variable schemas for different AI providers (matching GUI exactly)
 const AnthropicConfigSchema = z.object({
-    baseUrl: z.string().url().optional(),
-    authToken: z.string().optional(),
-    model: z.string().optional(),
+  baseUrl: z.string().url().optional(),
+  authToken: z.string().optional(),
+  model: z.string().optional(),
 });
 
 const OpenAIConfigSchema = z.object({
-    apiKey: z.string().optional(),
-    baseUrl: z.string().url().optional(),
-    model: z.string().optional(),
+  apiKey: z.string().optional(),
+  baseUrl: z.string().url().optional(),
+  model: z.string().optional(),
 });
 
 const AzureOpenAIConfigSchema = z.object({
-    apiKey: z.string().optional(),
-    endpoint: z.string().url().optional(),
-    apiVersion: z.string().optional(),
-    deploymentName: z.string().optional(),
+  apiKey: z.string().optional(),
+  endpoint: z.string().url().optional(),
+  apiVersion: z.string().optional(),
+  deploymentName: z.string().optional(),
 });
 
 const TogetherAIConfigSchema = z.object({
-    apiKey: z.string().optional(),
-    model: z.string().optional(),
+  apiKey: z.string().optional(),
+  model: z.string().optional(),
 });
 
 // Tmux configuration schema (matching GUI exactly)
 const TmuxConfigSchema = z.object({
-    sessionName: z.string().optional(),
-    tmpDir: z.string().optional(),
-    updateEnvironment: z.boolean().optional(),
+  sessionName: z.string().optional(),
+  tmpDir: z.string().optional(),
+  updateEnvironment: z.boolean().optional(),
 });
 
 // Environment variables schema with validation (matching GUI exactly)
 const EnvironmentVariableSchema = z.object({
-    name: z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'Invalid environment variable name'),
-    value: z.string(),
+  name: z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'Invalid environment variable name'),
+  value: z.string(),
 });
 
 // Profile compatibility schema (matching GUI exactly)
 const ProfileCompatibilitySchema = z.object({
-    claude: z.boolean().default(true),
-    codex: z.boolean().default(true),
-    gemini: z.boolean().default(true),
+  claude: z.boolean().default(true),
+  codex: z.boolean().default(true),
+  gemini: z.boolean().default(true),
+  copilot: z.boolean().default(true),
 });
 
 // AIBackendProfile schema - EXACT MATCH with GUI schema
 export const AIBackendProfileSchema = z.object({
-    id: z.string().uuid(),
-    name: z.string().min(1).max(100),
-    description: z.string().max(500).optional(),
+  id: z.string().uuid(),
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
 
-    // Agent-specific configurations
-    anthropicConfig: AnthropicConfigSchema.optional(),
-    openaiConfig: OpenAIConfigSchema.optional(),
-    azureOpenAIConfig: AzureOpenAIConfigSchema.optional(),
-    togetherAIConfig: TogetherAIConfigSchema.optional(),
+  // Agent-specific configurations
+  anthropicConfig: AnthropicConfigSchema.optional(),
+  openaiConfig: OpenAIConfigSchema.optional(),
+  azureOpenAIConfig: AzureOpenAIConfigSchema.optional(),
+  togetherAIConfig: TogetherAIConfigSchema.optional(),
 
-    // Tmux configuration
-    tmuxConfig: TmuxConfigSchema.optional(),
+  // Tmux configuration
+  tmuxConfig: TmuxConfigSchema.optional(),
 
-    // Environment variables (validated)
-    environmentVariables: z.array(EnvironmentVariableSchema).default([]),
+  // Environment variables (validated)
+  environmentVariables: z.array(EnvironmentVariableSchema).default([]),
 
-    // Default session type for this profile
-    defaultSessionType: z.enum(['simple', 'worktree']).optional(),
+  // Default session type for this profile
+  defaultSessionType: z.enum(['simple', 'worktree']).optional(),
 
-    // Default permission mode for this profile (supports both Claude and Codex modes)
-    defaultPermissionMode: z.enum([
-        'default', 'acceptEdits', 'bypassPermissions', 'plan',  // Claude modes
-        'read-only', 'safe-yolo', 'yolo'  // Codex modes
-    ]).optional(),
+  // Default permission mode for this profile (supports both Claude and Codex modes)
+  defaultPermissionMode: z.enum([
+    'default', 'acceptEdits', 'bypassPermissions', 'plan',  // Claude modes
+    'read-only', 'safe-yolo', 'yolo'  // Codex modes
+  ]).optional(),
 
-    // Default model mode for this profile
-    defaultModelMode: z.string().optional(),
+  // Default model mode for this profile
+  defaultModelMode: z.string().optional(),
 
-    // Compatibility metadata
-    compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true, gemini: true }),
+  // Compatibility metadata
+  compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true, gemini: true, copilot: true }),
 
-    // Built-in profile indicator
-    isBuiltIn: z.boolean().default(false),
+  // Built-in profile indicator
+  isBuiltIn: z.boolean().default(false),
 
-    // Metadata
-    createdAt: z.number().default(() => Date.now()),
-    updatedAt: z.number().default(() => Date.now()),
-    version: z.string().default('1.0.0'),
+  // Metadata
+  createdAt: z.number().default(() => Date.now()),
+  updatedAt: z.number().default(() => Date.now()),
+  version: z.string().default('1.0.0'),
 });
 
 export type AIBackendProfile = z.infer<typeof AIBackendProfileSchema>;
 
 // Helper functions matching the happy app exactly
-export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini'): boolean {
+export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini' | 'copilot'): boolean {
+  // copilot uses system-level gh auth, always compatible by default
+  if (agent === 'copilot') {
+    return profile.compatibility.copilot ?? true;
+  }
   return profile.compatibility[agent];
 }
 

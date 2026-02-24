@@ -7,7 +7,7 @@ import { hapticsLight } from './haptics';
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo';
 export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
-export type ModelMode = 'default' | 'adaptiveUsage' | 'sonnet' | 'opus' | 'gpt-5-codex-high' | 'gpt-5-codex-medium' | 'gpt-5-codex-low' | 'gpt-5-minimal' | 'gpt-5-low' | 'gpt-5-medium' | 'gpt-5-high' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'claude-3-5-sonnet-20241022' | 'claude-3-5-haiku-20241022' | 'claude-3-opus-20240229' | 'gpt-4o' | 'o1-preview' | 'o1-mini' | 'gpt-5.3-codex' | 'gpt-5.2-codex' | 'gpt-5.2' | 'gpt-5.1-codex-max' | 'gpt-5.1-codex-mini';
+export type ModelMode = 'default' | 'adaptiveUsage' | 'sonnet' | 'opus' | 'gpt-5-codex-high' | 'gpt-5-codex-medium' | 'gpt-5-codex-low' | 'gpt-5-minimal' | 'gpt-5-low' | 'gpt-5-medium' | 'gpt-5-high' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite' | 'claude-3-5-sonnet-20241022' | 'claude-3-5-haiku-20241022' | 'claude-3-opus-20240229' | 'gpt-4o' | 'o1-preview' | 'o1-mini' | 'gpt-5.3-codex' | 'gpt-5.2-codex' | 'gpt-5.2' | 'gpt-5.1-codex-max' | 'gpt-5.1-codex-mini' | 'claude-haiku-4-5' | 'gpt-5-mini' | 'gpt-4.1';
 
 interface PermissionModeSelectorProps {
     mode: PermissionMode;

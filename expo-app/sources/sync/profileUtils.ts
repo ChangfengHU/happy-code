@@ -234,6 +234,14 @@ export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5-codex"`,
 export GEMINI_API_KEY="AIza..."
 export GEMINI_MODEL="gemini-2.5-pro"`,
             };
+        case 'copilot':
+            return {
+                setupGuideUrl: 'https://github.com/features/copilot',
+                description: 'GitHub Copilot CLI agent',
+                environmentVariables: [],
+                shellConfigExample: `# No additional environment variables needed
+# Uses your GitHub Copilot authentication`,
+            };
         default:
             return null;
     }
@@ -267,7 +275,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                 anthropicConfig: {},
                 environmentVariables: [],
                 defaultPermissionMode: 'default',
-                compatibility: { claude: true, codex: false, gemini: false },
+                compatibility: { claude: true, codex: false, gemini: false, copilot: false },
                 isBuiltIn: true,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
@@ -292,7 +300,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                     { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '${DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}' },
                 ],
                 defaultPermissionMode: 'default',
-                compatibility: { claude: true, codex: false, gemini: false },
+                compatibility: { claude: true, codex: false, gemini: false, copilot: false },
                 isBuiltIn: true,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
@@ -319,7 +327,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                     { name: 'ANTHROPIC_DEFAULT_HAIKU_MODEL', value: '${Z_AI_HAIKU_MODEL:-GLM-4.5-Air}' },
                 ],
                 defaultPermissionMode: 'default',
-                compatibility: { claude: true, codex: false, gemini: false },
+                compatibility: { claude: true, codex: false, gemini: false, copilot: false },
                 isBuiltIn: true,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
@@ -338,7 +346,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                     { name: 'API_TIMEOUT_MS', value: '600000' },
                     { name: 'CODEX_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
                 ],
-                compatibility: { claude: false, codex: true, gemini: false },
+                compatibility: { claude: false, codex: true, gemini: false, copilot: false },
                 isBuiltIn: true,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
@@ -355,7 +363,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                     { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
                     { name: 'API_TIMEOUT_MS', value: '600000' },
                 ],
-                compatibility: { claude: false, codex: true, gemini: false },
+                compatibility: { claude: false, codex: true, gemini: false, copilot: false },
                 isBuiltIn: true,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
@@ -370,7 +378,19 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                     { name: 'GEMINI_API_KEY', value: '' },
                     { name: 'GEMINI_MODEL', value: 'gemini-2.5-pro' },
                 ],
-                compatibility: { claude: false, codex: false, gemini: true },
+                compatibility: { claude: false, codex: false, gemini: true, copilot: false },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
+            };
+        case 'copilot':
+            return {
+                id: 'copilot',
+                name: 'GitHub Copilot',
+                description: 'GitHub Copilot CLI agent',
+                environmentVariables: [],
+                compatibility: { claude: false, codex: false, gemini: false, copilot: true },
                 isBuiltIn: true,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
@@ -414,6 +434,11 @@ export const DEFAULT_PROFILES = [
     {
         id: 'gemini',
         name: 'Google Gemini',
+        isBuiltIn: true,
+    },
+    {
+        id: 'copilot',
+        name: 'GitHub Copilot',
         isBuiltIn: true,
     }
 ];

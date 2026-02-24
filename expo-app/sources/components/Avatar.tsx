@@ -22,6 +22,7 @@ const flavorIcons = {
     claude: require('@/assets/images/icon-claude.png'),
     codex: require('@/assets/images/icon-gpt.png'),
     gemini: require('@/assets/images/icon-gemini.png'),
+    copilot: require('@/assets/images/icon-copilot.png'),
 };
 
 const resolveFlavor = (flavor?: string | null): keyof typeof flavorIcons => {
@@ -30,6 +31,9 @@ const resolveFlavor = (flavor?: string | null): keyof typeof flavorIcons => {
     }
     if (flavor === 'gemini') {
         return 'gemini';
+    }
+    if (flavor === 'copilot' || flavor === 'github-copilot') {
+        return 'copilot';
     }
     return 'claude';
 };

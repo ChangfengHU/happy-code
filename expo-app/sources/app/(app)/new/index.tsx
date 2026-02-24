@@ -59,7 +59,7 @@ const useProfileMap = (profiles: AIBackendProfile[]) => {
 
 // Environment variable transformation helper
 // Returns ALL profile environment variables - daemon will use them as-is
-const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' = 'claude') => {
+const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' | 'copilot' = 'claude') => {
     // getProfileEnvironmentVariables already returns ALL env vars from profile
     // including custom environmentVariables array and provider-specific configs
     return getProfileEnvironmentVariables(profile);
@@ -309,20 +309,17 @@ function NewSessionWizard() {
         }
         return 'anthropic'; // Default to Anthropic
     });
-    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
+    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini' | 'copilot'>(() => {
         // Check if agent type was provided in temp data
         if (tempSessionData?.agentType) {
             // Only allow gemini if experiments are enabled
             if (tempSessionData.agentType === 'gemini' && !experimentsEnabled) {
                 return 'claude';
             }
-            return tempSessionData.agentType;
+            return tempSessionData.agentType as any;
         }
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
-            return lastUsedAgent;
-        }
-        if (lastUsedAgent === 'gemini') {
-            return lastUsedAgent;
+        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex' || lastUsedAgent === 'gemini' || lastUsedAgent === 'copilot') {
+            return lastUsedAgent as any;
         }
         return 'claude';
     });
@@ -331,9 +328,10 @@ function NewSessionWizard() {
     // Note: Does NOT persist immediately - persistence is handled by useEffect below
     const handleAgentClick = React.useCallback(() => {
         setAgentType(prev => {
-            // Cycle: claude -> codex -> gemini -> claude
+            // Cycle: claude -> codex -> gemini -> copilot -> claude
             if (prev === 'claude') return 'codex';
             if (prev === 'codex') return 'gemini';
+            if (prev === 'gemini') return 'copilot';
             return 'claude';
         });
     }, []);
@@ -347,6 +345,7 @@ function NewSessionWizard() {
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
         // Always default to yolo-style mode for new sessions, independent of stored CLI settings.
+        if (agentType === 'copilot') return 'yolo';
         return agentType === 'claude' ? 'bypassPermissions' : 'yolo';
     });
 
@@ -359,11 +358,14 @@ function NewSessionWizard() {
         const validCodexModes: ModelMode[] = ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'];
         // Note: 'default' is NOT valid for Gemini - we want explicit model selection
         const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+        const validCopilotModes: ModelMode[] = ['default', 'claude-haiku-4-5', 'gpt-5-mini', 'gpt-4.1'];
 
         if (lastUsedModelMode) {
             if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
                 return lastUsedModelMode as ModelMode;
             } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedModelMode as ModelMode)) {
+                return lastUsedModelMode as ModelMode;
+            } else if (agentType === 'copilot' && validCopilotModes.includes(lastUsedModelMode as ModelMode)) {
                 return lastUsedModelMode as ModelMode;
             }
             // For Gemini, always use gemini-2.5-pro as default, ignoring lastUsedModelMode
@@ -500,10 +502,15 @@ function NewSessionWizard() {
     const { variables: daemonEnv } = useEnvironmentVariables(selectedMachineId, envVarRefs);
 
     // Temporary banner dismissal (X button) - resets when component unmounts or machine changes
-    const [hiddenBanners, setHiddenBanners] = React.useState<{ claude: boolean; codex: boolean; gemini: boolean }>({ claude: false, codex: false, gemini: false });
+    const [hiddenBanners, setHiddenBanners] = React.useState<{ claude: boolean; codex: boolean; gemini: boolean; copilot: boolean }>({
+        claude: false,
+        codex: false,
+        gemini: false,
+        copilot: false
+    });
 
     // Helper to check if CLI warning has been dismissed (checks both global and per-machine)
-    const isWarningDismissed = React.useCallback((cli: 'claude' | 'codex' | 'gemini'): boolean => {
+    const isWarningDismissed = React.useCallback((cli: 'claude' | 'codex' | 'gemini' | 'copilot'): boolean => {
         // Check global dismissal first
         if (dismissedCLIWarnings.global?.[cli] === true) return true;
         // Check per-machine dismissal
@@ -512,7 +519,7 @@ function NewSessionWizard() {
     }, [selectedMachineId, dismissedCLIWarnings]);
 
     // Unified dismiss handler for all three button types (easy to use correctly, hard to use incorrectly)
-    const handleCLIBannerDismiss = React.useCallback((cli: 'claude' | 'codex' | 'gemini', type: 'temporary' | 'machine' | 'global') => {
+    const handleCLIBannerDismiss = React.useCallback((cli: 'claude' | 'codex' | 'gemini' | 'copilot', type: 'temporary' | 'machine' | 'global') => {
         if (type === 'temporary') {
             // X button: Hide for current session only (not persisted)
             setHiddenBanners(prev => ({ ...prev, [cli]: true }));
@@ -564,9 +571,9 @@ function NewSessionWizard() {
         const supportedCLIs = (Object.entries(profile.compatibility) as [string, boolean][])
             .filter(([, supported]) => supported)
             .map(([agent]) => agent);
-        const requiredCLI = supportedCLIs.length === 1 ? supportedCLIs[0] as 'claude' | 'codex' | 'gemini' : null;
+        const requiredCLI = supportedCLIs.length === 1 ? supportedCLIs[0] as 'claude' | 'codex' | 'gemini' | 'copilot' : null;
 
-        if (requiredCLI && cliAvailability[requiredCLI] === false) {
+        if (requiredCLI && (cliAvailability as any)[requiredCLI] === false) {
             return {
                 available: false,
                 reason: `cli-not-detected:${requiredCLI}`,
@@ -689,9 +696,9 @@ function NewSessionWizard() {
                 .map(([agent]) => agent);
 
             if (supportedCLIs.length === 1) {
-                const requiredAgent = supportedCLIs[0] as 'claude' | 'codex' | 'gemini';
+                const requiredAgent = supportedCLIs[0] as 'claude' | 'codex' | 'gemini' | 'copilot';
                 // Check if this agent is available and allowed
-                const isAvailable = cliAvailability[requiredAgent] !== false;
+                const isAvailable = (cliAvailability as any)[requiredAgent] !== false;
                 const isAllowed = true;
 
                 if (isAvailable && isAllowed) {
@@ -710,14 +717,14 @@ function NewSessionWizard() {
                 setPermissionMode(profile.defaultPermissionMode as PermissionMode);
             }
         }
-    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled]);
+    }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, cliAvailability.copilot, experimentsEnabled]);
 
     // Reset permission mode to yolo-style defaults when current mode is invalid for new agent
     React.useEffect(() => {
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
         const validCodexGeminiModes: PermissionMode[] = ['yolo'];
 
-        const isValidForCurrentAgent = (agentType === 'codex' || agentType === 'gemini')
+        const isValidForCurrentAgent = (agentType === 'codex' || agentType === 'gemini' || agentType === 'copilot')
             ? validCodexGeminiModes.includes(permissionMode)
             : validClaudeModes.includes(permissionMode);
 
@@ -732,12 +739,15 @@ function NewSessionWizard() {
         const validCodexModes: ModelMode[] = ['gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'];
         // Note: 'default' is NOT valid for Gemini - we want explicit model selection
         const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+        const validCopilotModes: ModelMode[] = ['default', 'claude-haiku-4-5', 'gpt-5-mini', 'gpt-4.1'];
 
         let isValidForCurrentAgent = false;
         if (agentType === 'codex') {
             isValidForCurrentAgent = validCodexModes.includes(modelMode);
         } else if (agentType === 'gemini') {
             isValidForCurrentAgent = validGeminiModes.includes(modelMode);
+        } else if (agentType === 'copilot') {
+            isValidForCurrentAgent = validCopilotModes.includes(modelMode);
         } else {
             isValidForCurrentAgent = validClaudeModes.includes(modelMode);
         }
@@ -748,6 +758,8 @@ function NewSessionWizard() {
                 setModelMode('gpt-5.3-codex');
             } else if (agentType === 'gemini') {
                 setModelMode('gemini-2.5-pro');
+            } else if (agentType === 'copilot') {
+                setModelMode('default');
             } else {
                 setModelMode('claude-3-5-sonnet-20241022');
             }
@@ -801,7 +813,7 @@ function NewSessionWizard() {
             name: '',
             anthropicConfig: {},
             environmentVariables: [],
-            compatibility: { claude: true, codex: true, gemini: true },
+            compatibility: { claude: true, codex: true, gemini: true, copilot: true },
             isBuiltIn: false,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -1084,7 +1096,7 @@ function NewSessionWizard() {
 
                 // Set permission mode and model mode on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
-                if ((agentType === 'gemini' || agentType === 'codex') && modelMode && modelMode !== 'default') {
+                if ((agentType === 'gemini' || agentType === 'codex' || agentType === 'copilot') && modelMode && modelMode !== 'default') {
                     storage.getState().updateSessionModelMode(result.sessionId, modelMode as any);
                 }
                 if (agentType === 'codex') {
@@ -1145,6 +1157,7 @@ function NewSessionWizard() {
                 claude: cliAvailability.claude,
                 codex: cliAvailability.codex,
                 gemini: cliAvailability.gemini,
+                copilot: cliAvailability.copilot,
             } : undefined,
         };
     }, [selectedMachine, selectedMachineId, cliAvailability, experimentsEnabled, theme]);
@@ -1539,6 +1552,79 @@ function NewSessionWizard() {
                                     </View>
                                 )}
 
+                                {/* Copilot Banner */}
+                                {selectedMachineId && cliAvailability.copilot === false && !isWarningDismissed('copilot') && !hiddenBanners.copilot && (
+                                    <View style={{
+                                        backgroundColor: theme.colors.box.warning.background,
+                                        borderRadius: 10,
+                                        padding: 12,
+                                        marginBottom: 12,
+                                        borderWidth: 1,
+                                        borderColor: theme.colors.box.warning.border,
+                                    }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
+                                            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
+                                                <Ionicons name="warning" size={16} color={theme.colors.warning} />
+                                                <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                                    Copilot CLI Not Detected
+                                                </Text>
+                                                <View style={{ flex: 1, minWidth: 20 }} />
+                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                    Don't show this popup for
+                                                </Text>
+                                                <Pressable
+                                                    onPress={() => handleCLIBannerDismiss('copilot', 'machine')}
+                                                    style={{
+                                                        borderRadius: 4,
+                                                        borderWidth: 1,
+                                                        borderColor: theme.colors.textSecondary,
+                                                        paddingHorizontal: 8,
+                                                        paddingVertical: 3,
+                                                    }}
+                                                >
+                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                        this machine
+                                                    </Text>
+                                                </Pressable>
+                                                <Pressable
+                                                    onPress={() => handleCLIBannerDismiss('copilot', 'global')}
+                                                    style={{
+                                                        borderRadius: 4,
+                                                        borderWidth: 1,
+                                                        borderColor: theme.colors.textSecondary,
+                                                        paddingHorizontal: 8,
+                                                        paddingVertical: 3,
+                                                    }}
+                                                >
+                                                    <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                        any machine
+                                                    </Text>
+                                                </Pressable>
+                                            </View>
+                                            <Pressable
+                                                onPress={() => handleCLIBannerDismiss('copilot', 'temporary')}
+                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                            >
+                                                <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
+                                            </Pressable>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                Install gh copilot ('gh extension install github/gh-copilot') •
+                                            </Text>
+                                            <Pressable onPress={() => {
+                                                if (Platform.OS === 'web') {
+                                                    window.open('https://docs.github.com/en/copilot/github-copilot-in-the-cli/using-github-copilot-in-the-cli', '_blank');
+                                                }
+                                            }}>
+                                                <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
+                                                    View Copilot Docs →
+                                                </Text>
+                                            </Pressable>
+                                        </View>
+                                    </View>
+                                )}
+
                                 {/* Custom profiles - show first */}
                                 {profiles.map((profile) => {
                                     const availability = isProfileAvailable(profile);
@@ -1875,7 +1961,7 @@ function NewSessionWizard() {
                                     <Text style={styles.sectionHeader}>4. Permission Mode</Text>
                                 </View>
                                 <ItemGroup title="">
-                                    {((agentType === 'codex' || agentType === 'gemini')
+                                    {((agentType === 'codex' || agentType === 'gemini' || agentType === 'copilot')
                                         ? [
                                             { value: 'yolo' as PermissionMode, label: 'YOLO', description: 'Full access, skip permissions', icon: 'flash-outline' },
                                         ]

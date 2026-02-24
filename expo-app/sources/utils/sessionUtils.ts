@@ -91,6 +91,7 @@ export function getSessionModelName(session: Session): string | null {
         'gemini-2.5-pro': 'Gemini 2.5 Pro',
         'gemini-2.5-flash': 'Gemini 2.5 Flash',
         'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
+        'copilot': 'Copilot',
     };
 
     return modelNames[flavor] || flavor;

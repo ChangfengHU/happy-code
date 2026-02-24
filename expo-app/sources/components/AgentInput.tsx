@@ -68,6 +68,7 @@ interface AgentInputProps {
             claude: boolean | null;
             codex: boolean | null;
             gemini?: boolean | null;
+            copilot?: boolean | null;
         };
     };
     autocompletePrefixes: string[];
@@ -81,7 +82,7 @@ interface AgentInputProps {
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex' | 'gemini';
+    agentType?: 'claude' | 'codex' | 'gemini' | 'copilot';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
@@ -448,6 +449,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         props.agentType === 'codex'
     );
     const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
+    const isCopilot = props.metadata?.flavor === 'copilot' || props.agentType === 'copilot';
 
     // Profile data
     const profiles = useSetting('profiles');
@@ -477,6 +479,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             return m;
         }
 
+        if (isCopilot) {
+            if (m === 'claude-haiku-4-5') return 'Claude Haiku 4.5';
+            if (m === 'gpt-5-mini') return 'GPT-5 mini';
+            if (m === 'gpt-4.1') return 'GPT-4.1';
+            if (m === 'default') return 'Copilot (Default)';
+            return m;
+        }
+
         if (isCodex) {
             const effortLabel = props.reasoningEffort || 'xhigh';
             if (m === 'gpt-5.3-codex') return `gpt-5.3-codex (${effortLabel})`;
@@ -492,7 +502,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (m === 'claude-3-5-haiku-20241022') return 'Haiku';
         if (m === 'default') return 'Claude (Default)';
         return m;
-    }, [props.modelMode, props.reasoningEffort, isGemini, isCodex]);
+    }, [props.modelMode, props.reasoningEffort, isGemini, isCodex, isCopilot]);
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 
@@ -893,7 +903,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             }
             // Handle Shift+Tab for permission mode switching
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-                const modeOrder: PermissionMode[] = (isCodex || isGemini)
+                const modeOrder: PermissionMode[] = (isCodex || isGemini || isCopilot)
                     ? ['yolo']
                     : ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
                 const currentIndex = modeOrder.indexOf(props.permissionMode || 'yolo');
@@ -951,9 +961,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
-                                        {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title')}
+                                        {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : isCopilot ? t('agentInput.copilotPermissionMode.title') : t('agentInput.permissionMode.title')}
                                     </Text>
-                                    {((isCodex || isGemini)
+                                    {((isCodex || isGemini || isCopilot)
                                         ? (['yolo'] as const)
                                         : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
                                     ).map((mode) => {
@@ -967,6 +977,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             'read-only': { label: t('agentInput.geminiPermissionMode.readOnly') },
                                             'safe-yolo': { label: t('agentInput.geminiPermissionMode.safeYolo') },
                                             'yolo': { label: t('agentInput.geminiPermissionMode.yolo') },
+                                        } : isCopilot ? {
+                                            'yolo': { label: t('agentInput.copilotPermissionMode.yolo') },
                                         } : {
                                             default: { label: t('agentInput.permissionMode.default') },
                                             acceptEdits: { label: t('agentInput.permissionMode.acceptEdits') },
@@ -1252,6 +1264,71 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 );
                                             })}
                                         </>
+                                    ) : isCopilot ? (
+                                        // Copilot model selector
+                                        (['default', 'claude-haiku-4-5', 'gpt-5-mini', 'gpt-4.1'] as const).map((model) => {
+                                            const modelConfig = {
+                                                'default': { label: 'Default', description: 'GitHub Copilot default model' },
+                                                'claude-haiku-4-5': { label: 'Claude Haiku 4.5', description: 'GitHub Copilot with Claude Haiku 4.5' },
+                                                'gpt-5-mini': { label: 'GPT-5 mini', description: 'GitHub Copilot with GPT-5 mini' },
+                                                'gpt-4.1': { label: 'GPT-4.1', description: 'GitHub Copilot with GPT-4.1' },
+                                            };
+                                            const config = modelConfig[model];
+                                            const isSelected = props.modelMode === model;
+
+                                            return (
+                                                <Pressable
+                                                    key={model}
+                                                    onPress={() => {
+                                                        hapticsLight();
+                                                        props.onModelModeChange?.(model);
+                                                    }}
+                                                    style={({ pressed }) => ({
+                                                        flexDirection: 'row',
+                                                        alignItems: 'center',
+                                                        paddingHorizontal: 16,
+                                                        paddingVertical: 8,
+                                                        backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                    })}
+                                                >
+                                                    <View style={{
+                                                        width: 16,
+                                                        height: 16,
+                                                        borderRadius: 8,
+                                                        borderWidth: 2,
+                                                        borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        marginRight: 12
+                                                    }}>
+                                                        {isSelected && (
+                                                            <View style={{
+                                                                width: 6,
+                                                                height: 6,
+                                                                borderRadius: 3,
+                                                                backgroundColor: theme.colors.radio.dot
+                                                            }} />
+                                                        )}
+                                                    </View>
+                                                    <View>
+                                                        <Text style={{
+                                                            fontSize: 14,
+                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            {config.label}
+                                                        </Text>
+                                                        <Text style={{
+                                                            fontSize: 11,
+                                                            color: theme.colors.textSecondary,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            {config.description}
+                                                        </Text>
+                                                    </View>
+                                                </Pressable>
+                                            );
+                                        })
                                     ) : (
                                         // Claude model selector (Default)
                                         (['default', 'claude-3-opus-20240229', 'claude-3-5-haiku-20241022'] as const).map((model) => {
@@ -1422,6 +1499,28 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                         ...Typography.default()
                                                     }}>
                                                         gemini
+                                                    </Text>
+                                                </View>
+                                            )}
+                                            {props.connectionStatus.cliStatus.copilot !== undefined && (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                    <Text style={{
+                                                        fontSize: 11,
+                                                        color: props.connectionStatus.cliStatus.copilot
+                                                            ? theme.colors.success
+                                                            : theme.colors.textDestructive,
+                                                        ...Typography.default()
+                                                    }}>
+                                                        {props.connectionStatus.cliStatus.copilot ? '✓' : '✗'}
+                                                    </Text>
+                                                    <Text style={{
+                                                        fontSize: 11,
+                                                        color: props.connectionStatus.cliStatus.copilot
+                                                            ? theme.colors.success
+                                                            : theme.colors.textDestructive,
+                                                        ...Typography.default()
+                                                    }}>
+                                                        copilot
                                                     </Text>
                                                 </View>
                                             )}
@@ -1756,7 +1855,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 fontWeight: '600',
                                                 ...Typography.default('semiBold'),
                                             }}>
-                                                {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
+                                                {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : props.agentType === 'copilot' ? t('agentInput.agent.copilot') : t('agentInput.agent.gemini')}
                                             </Text>
                                         </Pressable>
                                     )}

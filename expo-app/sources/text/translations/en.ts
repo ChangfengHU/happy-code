@@ -425,6 +425,7 @@ export const en: TranslationStructure = {
             claude: 'Claude',
             codex: 'Codex',
             gemini: 'Gemini',
+            copilot: 'Copilot',
         },
         model: {
             title: 'MODEL',
@@ -460,6 +461,10 @@ export const en: TranslationStructure = {
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
+        copilotPermissionMode: {
+            title: 'COPILOT PERMISSION MODE',
+            yolo: 'YOLO',
+        },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% left`,
         },
@@ -468,6 +473,7 @@ export const en: TranslationStructure = {
             folderLabel: 'FOLDER',
         },
         noMachinesAvailable: 'No machines',
+        refreshMachines: 'Refresh',
     },
 
     machineLauncher: {

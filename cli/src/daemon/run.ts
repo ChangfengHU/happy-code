@@ -36,7 +36,7 @@ export const initialMachineMetadata: MachineMetadata = {
 // Get environment variables for a profile, filtered for agent compatibility
 async function getProfileEnvironmentVariablesForAgent(
   profileId: string,
-  agentType: 'claude' | 'codex' | 'gemini'
+  agentType: 'claude' | 'codex' | 'gemini' | 'copilot'
 ): Promise<Record<string, string>> {
   try {
     const settings = await readSettings();
@@ -402,8 +402,10 @@ export async function startDaemon(): Promise<void> {
 
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
-          // Determine agent command - support claude, codex, and gemini
-          const agent = options.agent === 'gemini' ? 'gemini' : (options.agent === 'codex' ? 'codex' : 'claude');
+          // Determine agent command - support claude, codex, gemini, and copilot
+          const agent = options.agent === 'gemini' ? 'gemini'
+            : (options.agent === 'codex' ? 'codex'
+              : (options.agent === 'copilot' ? 'copilot' : 'claude'));
           const supportsResume = agent === 'claude' || agent === 'codex';
           const resumeArg = (supportsResume && sessionId)
             ? ` --resume ${shellEscape(sessionId)}`
@@ -502,6 +504,9 @@ export async function startDaemon(): Promise<void> {
               break;
             case 'gemini':
               agentCommand = 'gemini';
+              break;
+            case 'copilot':
+              agentCommand = 'copilot';
               break;
             default:
               return {

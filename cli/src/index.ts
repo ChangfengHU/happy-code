@@ -357,6 +357,48 @@ import { execFileSync } from 'node:child_process'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'copilot') {
+    // Handle copilot command (GitHub Copilot CLI agent)
+    try {
+      const { runCopilot } = await import('@/copilot/runCopilot');
+
+      // Parse startedBy argument
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let force = false;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--force') {
+          force = true;
+        }
+      }
+
+      const {
+        credentials
+      } = await authAndSetupMachineIfNeeded({ force });
+
+      // Auto-start daemon for copilot (same as gemini)
+      logger.debug('Ensuring Happy background service is running & matches our version...');
+      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
+        logger.debug('Starting Happy background service...');
+        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env
+        });
+        daemonProcess.unref();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      await runCopilot({ credentials, startedBy });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'logout') {
     // Keep for backward compatibility - redirect to auth logout
     console.log(chalk.yellow('Note: "happy logout" is deprecated. Use "happy auth logout" instead.\n'));
