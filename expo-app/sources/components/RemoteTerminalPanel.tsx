@@ -119,33 +119,19 @@ export const RemoteTerminalPanel = React.memo(({
         };
     }, [sessionId, terminalId]);
 
-    // Send input - now handles both character-by-character and line-based input
+    // Send input - simplified approach that just sends raw input directly
     const handleInputChange = React.useCallback(async (newValue: string) => {
         if (!terminalId) return;
 
-        const currentValue = inputValue;
-        const diff = newValue.length - currentValue.length;
-
-        // Character added
-        if (diff > 0) {
-            const addedChars = newValue.substring(currentValue.length);
-            await sessionWriteTerminal(sessionId, terminalId, addedChars);
-        }
-        // Character removed (backspace)
-        else if (diff < 0) {
-            // Send backspace for each removed character
-            for (let i = 0; i < Math.abs(diff); i++) {
-                await sessionWriteTerminal(sessionId, terminalId, '\x08');
-            }
-        }
-
+        // Simply update the input value state
+        // The actual character transmission will happen through the proper channel
         setInputValue(newValue);
-    }, [sessionId, terminalId, inputValue]);
+    }, [terminalId]);
 
-    // Send input (for send button or Enter key)
+    // Send input via send button
     const handleSend = React.useCallback(async () => {
         if (!terminalId || !inputValue) return;
-        await sessionWriteTerminal(sessionId, terminalId, '\n');
+        await sessionWriteTerminal(sessionId, terminalId, inputValue + '\n');
         setInputValue('');
         inputRef.current?.focus();
     }, [sessionId, terminalId, inputValue]);
@@ -156,7 +142,13 @@ export const RemoteTerminalPanel = React.memo(({
 
         if (e.key === 'Enter') {
             e.preventDefault();
-            handleSend();
+            // Send the full input + newline
+            if (inputValue) {
+                sessionWriteTerminal(sessionId, terminalId, inputValue + '\n');
+            } else {
+                sessionWriteTerminal(sessionId, terminalId, '\n');
+            }
+            setInputValue('');
             return;
         }
         
@@ -212,7 +204,7 @@ export const RemoteTerminalPanel = React.memo(({
             sessionWriteTerminal(sessionId, terminalId, '\x08');
             return;
         }
-    }, [sessionId, terminalId]);
+    }, [sessionId, terminalId, inputValue]);
 
     // Only render on web
     if (Platform.OS !== 'web') {
@@ -222,7 +214,7 @@ export const RemoteTerminalPanel = React.memo(({
     return (
         <View style={{
             flex: 1,
-            backgroundColor: theme.colors.groupped.background,
+            backgroundColor: '#f5f5f5',
             borderLeftWidth: 1,
             borderLeftColor: theme.colors.divider,
         }}>
@@ -235,6 +227,7 @@ export const RemoteTerminalPanel = React.memo(({
                 paddingVertical: 10,
                 borderBottomWidth: 0.5,
                 borderBottomColor: theme.colors.divider,
+                backgroundColor: theme.colors.groupped.background,
             }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Ionicons name="terminal-outline" size={16} color={theme.colors.textLink} />
@@ -273,45 +266,38 @@ export const RemoteTerminalPanel = React.memo(({
                 </View>
             ) : (
                 <View style={{ flex: 1 }}>
-                    {/* Output area */}
+                    {/* Output area - terminal output display */}
                     <div
                         ref={(el: any) => { outputRef.current = el; }}
                         onClick={() => inputRef.current?.focus()}
                         style={{
                             flex: 1,
                             overflow: 'auto',
-                            padding: '12px 12px',
-                            fontFamily: "'SF Mono', 'Menlo', 'Consolas', monospace",
-                            fontSize: '12.5px',
-                            lineHeight: '1.6',
-                            color: theme.colors.text,
+                            padding: '12px',
+                            fontFamily: 'monospace',
+                            fontSize: '13px',
+                            lineHeight: '1.5',
+                            color: '#000',
                             backgroundColor: '#f5f5f5',
                             whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-all',
+                            wordBreak: 'break-word',
                             height: '100%',
                             cursor: 'text',
                         } as any}
                     >
-                        {output || '$ '}
+                        {output || ''}
                     </div>
 
-                    {/* Input area */}
+                    {/* Input area - where user types commands */}
                     <div style={{
                         display: 'flex',
                         flexDirection: 'row',
                         alignItems: 'center',
-                        borderTop: `0.5px solid ${theme.colors.divider}`,
+                        borderTop: `1px solid #e0e0e0`,
                         backgroundColor: '#f5f5f5',
                         padding: '8px 12px',
+                        minHeight: '40px',
                     } as any}>
-                        <span style={{
-                            color: theme.colors.textSecondary,
-                            fontFamily: "'SF Mono', 'Menlo', monospace",
-                            fontSize: '12.5px',
-                            marginRight: '0px',
-                            fontWeight: '400',
-                            whiteSpace: 'nowrap',
-                        } as any}>{isAlive ? '$ ' : '[已退出] '}</span>
                         <input
                             ref={(el: any) => { inputRef.current = el; }}
                             type="text"
@@ -326,10 +312,10 @@ export const RemoteTerminalPanel = React.memo(({
                                 backgroundColor: 'transparent',
                                 border: 'none',
                                 outline: 'none',
-                                color: theme.colors.text,
-                                fontFamily: "'SF Mono', 'Menlo', 'Consolas', monospace",
-                                fontSize: '12.5px',
-                                padding: '0px 4px',
+                                color: '#000',
+                                fontFamily: 'monospace',
+                                fontSize: '13px',
+                                padding: '4px 0px',
                             } as any}
                         />
                         <Pressable
