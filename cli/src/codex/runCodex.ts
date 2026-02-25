@@ -31,6 +31,7 @@ import { stopCaffeinate } from "@/utils/caffeinate";
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
+import { getUserContentImages, getUserContentText } from '@/api/types';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -218,9 +219,34 @@ export async function runCodex(opts: {
             model: messageModel,
             reasoningEffort: messageReasoningEffort,
         };
-        // The message content can be of different types (e.g. image), so we need to check for text
-        if (message.content.type === 'text') {
-            messageQueue.push(message.content.text, enhancedMode);
+
+        const messageText = getUserContentText(message.content);
+        const imageCount = getUserContentImages(message.content).length;
+
+        // Codex MCP flow currently accepts text prompts only. If a client sends images,
+        // acknowledge explicitly instead of silently dropping the whole message.
+        if (imageCount > 0) {
+            const imageWarning = imageCount === 1
+                ? 'Image attachments are not supported in Codex sessions yet. I will ignore the image and continue with text only.'
+                : `Image attachments are not supported in Codex sessions yet. I will ignore ${imageCount} images and continue with text only.`;
+            session.sendCodexMessage({
+                type: 'message',
+                message: imageWarning,
+                id: randomUUID()
+            });
+        }
+
+        if (messageText.trim().length > 0) {
+            messageQueue.push(messageText, enhancedMode);
+            return;
+        }
+
+        if (imageCount > 0) {
+            session.sendCodexMessage({
+                type: 'turn_aborted',
+                id: randomUUID()
+            });
+            session.sendSessionEvent({ type: 'ready' });
         }
     });
     let thinking = false;

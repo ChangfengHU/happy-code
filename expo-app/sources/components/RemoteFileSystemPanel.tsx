@@ -28,6 +28,8 @@ interface RemoteFileSystemPanelProps {
     panelWidth?: number;
     /** 打开终端回调 */
     onTerminalOpen?: () => void;
+    /** 打开独立终端页面 */
+    onDedicatedTerminalOpen?: () => void;
     /** Agent 类型 */
     flavor?: string | null;
 }
@@ -375,6 +377,11 @@ export const RemoteFileSystemPanel = React.memo(({
                     {Platform.OS === 'web' && onTerminalOpen && (
                         <Pressable onPress={onTerminalOpen} style={styles.headerButton} hitSlop={8}>
                             <Ionicons name="terminal-outline" size={18} color={theme.colors.textSecondary} />
+                        </Pressable>
+                    )}
+                    {Platform.OS === 'web' && onDedicatedTerminalOpen && (
+                        <Pressable onPress={onDedicatedTerminalOpen} style={styles.headerButton} hitSlop={8}>
+                            <Ionicons name="expand" size={18} color={theme.colors.textSecondary} />
                         </Pressable>
                     )}
                     <Pressable onPress={handleRefresh} style={styles.headerButton} hitSlop={8}>

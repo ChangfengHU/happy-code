@@ -1237,7 +1237,7 @@ function NewSessionWizard() {
                                 currentPath={selectedPath}
                                 onPathClick={handlePathClick}
                                 onRefreshMachines={machines.length === 0 ? handleRefreshMachines : undefined}
-                                allowImagePaste={true}
+                                allowImagePaste={agentType === 'claude' || agentType === 'gemini'}
                             />
                         </View>
                     </View>
@@ -2061,7 +2061,7 @@ function NewSessionWizard() {
                             profileId={selectedProfileId}
                             onProfileClick={handleAgentInputProfileClick}
                             onRefreshMachines={machines.length === 0 ? handleRefreshMachines : undefined}
-                            allowImagePaste={true}
+                            allowImagePaste={agentType === 'claude' || agentType === 'gemini'}
                         />
                     </View>
                 </View>

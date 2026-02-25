@@ -48,9 +48,6 @@ const supportsImagePaste = (flavor?: string | null): boolean => {
 
     return (
         flavor === 'claude' ||
-        flavor === 'codex' ||
-        flavor === 'gpt' ||
-        flavor === 'openai' ||
         flavor === 'gemini'
     );
 };
@@ -613,6 +610,7 @@ function SessionViewLoaded({ sessionId, session, switchPath }: { sessionId: stri
                             setSelectedFilePath(null);
                             setSelectedFileName('');
                         }}
+                        onDedicatedTerminalOpen={() => router.push(`/session/${sessionId}/terminal`)}
                         flavor={session.metadata?.flavor}
                     />
 
