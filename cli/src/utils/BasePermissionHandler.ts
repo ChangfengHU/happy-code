@@ -53,6 +53,13 @@ export abstract class BasePermissionHandler {
      */
     protected abstract getLogPrefix(): string;
 
+    /**
+     * Normalize request ids so RPC payload and pending map always use the same key shape.
+     */
+    protected normalizeRequestId(id: unknown): string {
+        return String(id);
+    }
+
     constructor(session: ApiSessionClient) {
         this.session = session;
         this.setupRpcHandler();
@@ -76,14 +83,15 @@ export abstract class BasePermissionHandler {
         this.session.rpcHandlerManager.registerHandler<PermissionResponse, void>(
             'permission',
             async (response) => {
-                const pending = this.pendingRequests.get(response.id);
+                const responseId = this.normalizeRequestId(response.id);
+                const pending = this.pendingRequests.get(responseId);
                 if (!pending) {
                     logger.debug(`${this.getLogPrefix()} Permission request not found or already resolved`);
                     return;
                 }
 
                 // Remove from pending
-                this.pendingRequests.delete(response.id);
+                this.pendingRequests.delete(responseId);
 
                 // Resolve the permission request
                 const result: PermissionResult = response.approved
@@ -94,17 +102,17 @@ export abstract class BasePermissionHandler {
 
                 // Move request to completed in agent state
                 this.session.updateAgentState((currentState) => {
-                    const request = currentState.requests?.[response.id];
+                    const request = currentState.requests?.[responseId];
                     if (!request) return currentState;
 
-                    const { [response.id]: _, ...remainingRequests } = currentState.requests || {};
+                    const { [responseId]: _, ...remainingRequests } = currentState.requests || {};
 
                     let res = {
                         ...currentState,
                         requests: remainingRequests,
                         completedRequests: {
                             ...currentState.completedRequests,
-                            [response.id]: {
+                            [responseId]: {
                                 ...request,
                                 completedAt: Date.now(),
                                 status: response.approved ? 'approved' : 'denied',

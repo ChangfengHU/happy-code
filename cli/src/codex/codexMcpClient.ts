@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { execSync } from 'child_process';
+import { randomUUID } from 'node:crypto';
 
 const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half of the maximum possible timeout (~28 days for int32 value in NodeJS)
 
@@ -128,19 +129,34 @@ export class CodexMcpClient {
         this.client.setRequestHandler(
             ElicitRequestSchema,
             async (request) => {
-                console.log('[CodexMCP] Received elicitation request:', request.params);
+                logger.debug('[CodexMCP] Received elicitation request:', request.params);
 
                 // Load params
                 const params = request.params as unknown as {
-                    message: string,
-                    codex_elicitation: string,
-                    codex_mcp_tool_call_id: string,
-                    codex_event_id: string,
-                    codex_call_id: string,
-                    codex_command: string[],
-                    codex_cwd: string
+                    message?: string;
+                    codex_elicitation?: string;
+                    codex_mcp_tool_call_id?: string;
+                    codex_event_id?: string;
+                    codex_call_id?: string;
+                    call_id?: string;
+                    codex_command?: string[];
+                    command?: string[];
+                    codex_cwd?: string;
+                    cwd?: string;
                 }
                 const toolName = 'CodexBash';
+                const toolCallId =
+                    params.codex_call_id ||
+                    params.call_id ||
+                    params.codex_mcp_tool_call_id ||
+                    params.codex_event_id ||
+                    randomUUID();
+                const command = Array.isArray(params.codex_command)
+                    ? params.codex_command
+                    : Array.isArray(params.command)
+                        ? params.command
+                        : [];
+                const cwd = params.codex_cwd || params.cwd || process.cwd();
 
                 // If no permission handler set, deny by default
                 if (!this.permissionHandler) {
@@ -153,11 +169,11 @@ export class CodexMcpClient {
                 try {
                     // Request permission through the handler
                     const result = await this.permissionHandler.handleToolCall(
-                        params.codex_call_id,
+                        toolCallId,
                         toolName,
                         {
-                            command: params.codex_command,
-                            cwd: params.codex_cwd
+                            command,
+                            cwd
                         }
                     );
 

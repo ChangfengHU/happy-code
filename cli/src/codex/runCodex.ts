@@ -726,10 +726,10 @@ export async function runCodex(opts: {
                         // Codex native modes
                         case 'default': return 'untrusted' as const;                    // Ask for non-trusted commands
                         case 'read-only': return 'never' as const;                      // Never ask, read-only enforced by sandbox
-                        case 'safe-yolo': return 'on-failure' as const;                 // Auto-run, ask only on failure
-                        case 'yolo': return 'on-failure' as const;                      // Auto-run, ask only on failure
+                        case 'safe-yolo': return 'on-failure' as const;                 // Auto-run in sandbox, ask only on escalation/failure
+                        case 'yolo': return 'never' as const;                           // Never ask approvals in yolo mode
                         // Defensive fallback for Claude-specific modes (backward compatibility)
-                        case 'bypassPermissions': return 'on-failure' as const;         // Full access: map to yolo behavior
+                        case 'bypassPermissions': return 'never' as const;              // Full bypass behavior
                         case 'acceptEdits': return 'on-request' as const;               // Let model decide (closest to auto-approve edits)
                         case 'plan': return 'untrusted' as const;                       // Conservative: ask for non-trusted
                         default: return 'untrusted' as const;                           // Safe fallback
