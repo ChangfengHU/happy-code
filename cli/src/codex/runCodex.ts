@@ -220,34 +220,38 @@ export async function runCodex(opts: {
             reasoningEffort: messageReasoningEffort,
         };
 
-        const messageText = getUserContentText(message.content);
-        const imageCount = getUserContentImages(message.content).length;
+        const messageText = getUserContentText(message.content).trim();
+        const images = getUserContentImages(message.content);
 
-        // Codex MCP flow currently accepts text prompts only. If a client sends images,
-        // acknowledge explicitly instead of silently dropping the whole message.
-        if (imageCount > 0) {
-            const imageWarning = imageCount === 1
-                ? 'Image attachments are not supported in Codex sessions yet. I will ignore the image and continue with text only.'
-                : `Image attachments are not supported in Codex sessions yet. I will ignore ${imageCount} images and continue with text only.`;
-            session.sendCodexMessage({
-                type: 'message',
-                message: imageWarning,
-                id: randomUUID()
-            });
+        const promptParts: string[] = [];
+        if (messageText.length > 0) {
+            promptParts.push(messageText);
         }
 
-        if (messageText.trim().length > 0) {
-            messageQueue.push(messageText, enhancedMode);
+        if (images.length > 0) {
+            const imageReferences = images.map((image, index) => {
+                if (typeof image.url === 'string' && image.url.length > 0) {
+                    return `Image ${index + 1}: ${image.url}`;
+                }
+                if (typeof image.data === 'string' && image.data.length > 0) {
+                    return `Image ${index + 1}: [inline ${image.mimeType} image was attached but no public URL is available]`;
+                }
+                return `Image ${index + 1}: [image payload unavailable]`;
+            });
+
+            promptParts.push(
+                images.length === 1 ? 'Attached image reference:' : 'Attached image references:',
+                imageReferences.join('\n'),
+                'Use the image reference(s) above when responding.'
+            );
+        }
+
+        const prompt = promptParts.join('\n\n').trim();
+        if (prompt.length === 0) {
             return;
         }
 
-        if (imageCount > 0) {
-            session.sendCodexMessage({
-                type: 'turn_aborted',
-                id: randomUUID()
-            });
-            session.sendSessionEvent({ type: 'ready' });
-        }
+        messageQueue.push(prompt, enhancedMode);
     });
     let thinking = false;
     session.keepAlive(thinking, 'remote');

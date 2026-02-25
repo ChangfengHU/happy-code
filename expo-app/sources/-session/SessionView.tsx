@@ -48,6 +48,9 @@ const supportsImagePaste = (flavor?: string | null): boolean => {
 
     return (
         flavor === 'claude' ||
+        flavor === 'codex' ||
+        flavor === 'gpt' ||
+        flavor === 'openai' ||
         flavor === 'gemini'
     );
 };
